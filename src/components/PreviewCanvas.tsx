@@ -51,7 +51,7 @@ export const PreviewCanvas = ({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        // Asegurar que no hay sombra artificial en la previsualización
+        // Asegurar que no hay sombra artificial en la previsualización (Sombra desactivada para realismo)
         ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
         ctx.shadowBlur = 0;
         ctx.shadowOffsetX = 0;
@@ -100,7 +100,7 @@ export const PreviewCanvas = ({
       }
     };
     img.src = image;
-  }, [image, text, author, fontStyle, inkColor, generatedImage]); // <-- Añadir 'author' a las dependencias
+  }, [image, text, author, fontStyle, inkColor, generatedImage]); // <-- Dependencias correctas
 
   const handleDownload = () => {
     const source = generatedImage || (canvasRef.current && image ? canvasRef.current.toDataURL("image/png") : null);
@@ -117,11 +117,45 @@ export const PreviewCanvas = ({
   
   const displayImage = generatedImage || image;
 
-  return (
+  return ( // <-- EL COMPONENTE COMPLETO RETORNA AQUÍ
     <Card className="h-full shadow-medium">
       <CardHeader>
         <CardTitle className="text-2xl font-semibold">Previsualización con Texto</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="border-2 border-border rounded-lg overflow-hidden bg-gradient-soft relative">
-          {
+          {isGenerating ? (
+            <div className="w-full h-80 flex flex-col items-center justify-center text-primary animate-pulse">
+              <Loader2 className="h-12 w-12 mb-4 animate-spin" />
+              <p className="text-muted-foreground">Esperando la generación realista de Gemini...</p>
+            </div>
+          ) : generatedImage ? (
+            <img
+              src={generatedImage}
+              alt="Imagen generada con texto realista"
+              className="w-full h-80 object-contain"
+            />
+          ) : displayImage ? (
+            <canvas
+              ref={canvasRef}
+              className="w-full h-80 object-contain"
+            />
+          ) : (
+            <div className="w-full h-80 flex items-center justify-center text-muted-foreground">
+              <p>Sube una imagen para comenzar</p>
+            </div>
+          )}
+        </div>
+
+        <Button
+          onClick={handleDownload}
+          disabled={!displayImage || isGenerating}
+          className="w-full bg-gradient-accent shadow-medium hover:shadow-strong transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Descargar Imagen
+        </Button>
+      </CardContent>
+    </Card>
+  );
+};
