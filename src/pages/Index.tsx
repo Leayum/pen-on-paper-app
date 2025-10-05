@@ -89,7 +89,7 @@ Genera solo la imagen editada como resultado.
       console.log("------------------------------");
 
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image" });
 
       const imagePart = dataUrlToGenerativePart(image, imageMimeType);
       
