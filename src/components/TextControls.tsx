@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface TextControlsProps {
@@ -19,6 +19,9 @@ interface TextControlsProps {
   onTextChange: (text: string) => void;
   onFontStyleChange: (style: string) => void;
   onInkColorChange: (color: string) => void;
+  onGenerate: () => Promise<void>;
+  isGenerating: boolean;
+  isImageLoaded: boolean;
 }
 
 const fontStyles = [
@@ -41,14 +44,24 @@ export const TextControls = ({
   onTextChange,
   onFontStyleChange,
   onInkColorChange,
+  onGenerate,
+  isGenerating,
+  isImageLoaded,
 }: TextControlsProps) => {
+  
   const handleGenerate = () => {
-    if (!text.trim()) {
-      toast.error("Por favor ingresa un texto primero");
+    if (!isImageLoaded) {
+      toast.error("Por favor, sube una imagen de hoja de papel primero.");
       return;
     }
-    toast.success("¡Imagen generada con éxito!");
+    if (!text.trim()) {
+      toast.error("Por favor ingresa un texto primero.");
+      return;
+    }
+    onGenerate();
   };
+
+  const isButtonDisabled = isGenerating || !isImageLoaded || !text.trim();
 
   return (
     <Card className="h-full shadow-medium">
@@ -68,6 +81,7 @@ export const TextControls = ({
             value={text}
             onChange={(e) => onTextChange(e.target.value)}
             className="min-h-32 resize-none transition-all focus:shadow-soft"
+            disabled={isGenerating}
           />
         </div>
 
@@ -75,7 +89,7 @@ export const TextControls = ({
           <Label htmlFor="font" className="text-base font-medium">
             Estilo de Caligrafía:
           </Label>
-          <Select value={fontStyle} onValueChange={onFontStyleChange}>
+          <Select value={fontStyle} onValueChange={onFontStyleChange} disabled={isGenerating}>
             <SelectTrigger id="font" className="transition-all focus:shadow-soft">
               <SelectValue />
             </SelectTrigger>
@@ -97,7 +111,7 @@ export const TextControls = ({
           <Label htmlFor="color" className="text-base font-medium">
             Color de Tinta:
           </Label>
-          <Select value={inkColor} onValueChange={onInkColorChange}>
+          <Select value={inkColor} onValueChange={onInkColorChange} disabled={isGenerating}>
             <SelectTrigger id="color" className="transition-all focus:shadow-soft">
               <SelectValue />
             </SelectTrigger>
@@ -119,11 +133,16 @@ export const TextControls = ({
 
         <Button
           onClick={handleGenerate}
+          disabled={isButtonDisabled}
           className="w-full bg-gradient-primary shadow-medium hover:shadow-strong transition-all mt-6"
           size="lg"
         >
-          <Sparkles className="h-5 w-5 mr-2" />
-          Generar Imagen con Texto Realista
+          {isGenerating ? (
+            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+          ) : (
+            <Sparkles className="h-5 w-5 mr-2" />
+          )}
+          {isGenerating ? "Generando..." : "Generar Imagen con Texto Realista"}
         </Button>
       </CardContent>
     </Card>
