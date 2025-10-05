@@ -75,18 +75,20 @@ const Index = () => {
       const realismPrompt = `
 Añade el siguiente texto directamente sobre la imagen de la hoja de papel en blanco que he proporcionado.
 
-El objetivo es lograr un efecto de escritura a mano **ultra-realista**, donde la **tinta parezca haber sido absorbida en las fibras del papel** y genere una **sombra ligera** para dar profundidad. No debe verse como texto digital plano; la imagen editada debe parecer una fotografía real de la hoja con el texto **integrado** como si siempre hubiera estado allí.
+El objetivo es lograr un efecto de escritura a mano **ultra-realista**, donde la **tinta parezca haber sido absorbida en las fibras del papel**. No debe verse como texto digital plano; la imagen editada debe parecer una fotografía real de la hoja con el texto **integrado** como si siempre hubiera estado allí.
 
-**INSTRUCCIONES CLAVE DE REPRODUCCIÓN:**
-1.  **DEBES COPIAR EL TEXTO EXACTAMENTE** como se indica en la sección 'CONTENIDO' sin ningún error tipográfico, ortográfico o de sintaxis.
-2.  **Estilo de Caligrafía:** Simula una escritura "${styleDescription}" con un trazo natural y humano.
-3.  **Color de la Tinta:** Utiliza ${inkDescription}.
-
-**CONTENIDO A AÑADIR (COPIAR EXACTAMENTE):**
-"${text}"
-
-**FINALMENTE:** Genera solo la imagen editada como resultado.
-      `;
+ **INSTRUCCIONES CLAVE DE REPRODUCCIÓN:**
+ 1.  **DEBES COPIAR EL TEXTO EXACTAMENTE** como se indica en la sección 'CONTENIDO' sin ningún error tipográfico, ortográfico o de sintaxis.
+ 2.  **Estilo de Caligrafía:** Simula una escritura "${styleDescription}" con un trazo natural y humano.
+ 3.  **Color de la Tinta:** Utiliza ${inkDescription}.
+ 
+-**CONTENIDO A AÑADIR (COPIAR EXACTAMENTE):**
+-"${text}"
++**CONTENIDO A AÑADIR (COPIAR EXACTAMENTE, UNA SOLA LÍNEA):**
++1. ${text}
+ 
+ **FINALMENTE:** Genera solo la imagen editada como resultado.
+       `;
 
       console.log("--- PROMPT ENVIADO A GEMINI ---");
       console.log(realismPrompt);
