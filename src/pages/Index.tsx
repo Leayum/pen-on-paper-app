@@ -101,7 +101,7 @@ ${text.trim()}
       console.log("------------------------------");
 
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-image" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
       const imagePart = dataUrlToGenerativePart(image, imageMimeType);
       
