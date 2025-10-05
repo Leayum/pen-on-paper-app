@@ -85,10 +85,11 @@ export const PreviewCanvas = ({
         if (author.trim()) {
           // Usar 60% del tamaño del texto principal para el autor
           const authorFontSize = fontSize * 0.6; 
+          const extraSpacingFactor = 3.0; // Multiplicador aumentado a 3.0 para una separación más visible
           
           // Calcular la posición Y, dejando espacio debajo del texto principal
-          // Aumento la separación vertical sumando 1.5 veces la altura de línea (lineHeight * 1.5)
-          const authorY = startY + lines.length * lineHeight + authorFontSize * 0.8 + lineHeight * 1.5; 
+          // Ahora usa el factor 3.0
+          const authorY = startY + lines.length * lineHeight + authorFontSize * 0.8 + lineHeight * extraSpacingFactor; 
           
           // Calcular la posición X para alineación a la derecha (ajustado para que el texto no toque el borde)
           const authorX = canvasWidth * 0.9 - authorFontSize * 0.5; 
