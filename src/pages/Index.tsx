@@ -23,7 +23,7 @@ const dataUrlToGenerativePart = (dataUrl: string, mimeType: string) => {
 const Index = () => {
   const [image, setImage] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [author, setAuthor] = useState(""); // <-- NUEVO ESTADO PARA EL AUTOR
+  const [author, setAuthor] = useState(""); // <-- ESTADO DEL AUTOR AÑADIDO
   const [fontStyle, setFontStyle] = useState("Dancing Script");
   const [inkColor, setInkColor] = useState("#000000");
   
@@ -68,7 +68,7 @@ const Index = () => {
         "Dancing Script": "cursiva elegante y fluida con trazos finos",
         "Pacifico": "manuscrita atrevida y redondeada, tipo marcador",
         "Caveat": "escritura casual con letras ligeramente irregulares",
-        "Indie Flower": "escritura juguetona y desenfadada, con bordes redondeados y un trazo más grueso", // <-- AÑADIDO
+        "Indie Flower": "escritura juguetona y desenfadada, con bordes redondeados y un trazo más grueso",
       };
 
       const inkDescription = inkColorMap[inkColor] || "tinta de color realista";
@@ -78,7 +78,7 @@ const Index = () => {
       const authorDescription = author.trim() ? `\n\n4.  **Autor:** El autor a añadir es: "${author}". Debe estar en una línea separada, más pequeña (aprox. 60% del tamaño del texto principal) y alineada a la derecha debajo de la frase principal.` : "";
 
       const realismPrompt = `
-Añade el siguiente texto directamente sobre la imagen de la hoja de papel en blanco que he proporcionado.
+Añade el texto proporcionado a continuación directamente sobre la imagen de la hoja de papel en blanco.
 
 El objetivo es lograr un efecto de escritura a mano **ultra-realista**, donde la **tinta parezca haber sido absorbida en las fibras del papel**. No debe verse como texto digital plano; la imagen editada debe parecer una fotografía real de la hoja con el texto **integrado** como si siempre hubiera estado allí.
 
@@ -88,8 +88,10 @@ El objetivo es lograr un efecto de escritura a mano **ultra-realista**, donde la
 3.  **Color de la Tinta:** Utiliza ${inkDescription}.
 ${authorDescription}
 
-**CONTENIDO A AÑADIR (COPIAR EXACTAMENTE, UNA SOLA LÍNEA):**
-1. ${text.trim()}
+**CONTENIDO A AÑADIR (TRANSCRIPCIÓN LITERAL):**
+\`\`\`
+${text.trim()}
+\`\`\`
 
 **FINALMENTE:** Genera solo la imagen editada como resultado.
       `;
