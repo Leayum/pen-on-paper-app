@@ -14,9 +14,11 @@ import { toast } from "sonner";
 
 interface TextControlsProps {
   text: string;
+  author: string; // <-- NUEVA PROP
   fontStyle: string;
   inkColor: string;
   onTextChange: (text: string) => void;
+  onAuthorChange: (author: string) => void; // <-- NUEVO HANDLER
   onFontStyleChange: (style: string) => void;
   onInkColorChange: (color: string) => void;
   onGenerate: () => Promise<void>;
@@ -28,6 +30,7 @@ const fontStyles = [
   { value: "Dancing Script", label: "Cursiva Elegante" },
   { value: "Pacifico", label: "Manuscrita Atrevida" },
   { value: "Caveat", label: "Escritura Casual" },
+  { value: "Indie Flower", label: "Flor Independiente" }, // <-- NUEVA FUENTE AÑADIDA
 ];
 
 const inkColors = [
@@ -39,9 +42,11 @@ const inkColors = [
 
 export const TextControls = ({
   text,
+  author, // <-- AÑADIR A DESTRUCTURING
   fontStyle,
   inkColor,
   onTextChange,
+  onAuthorChange, // <-- AÑADIR A DESTRUCTURING
   onFontStyleChange,
   onInkColorChange,
   onGenerate,
@@ -84,6 +89,23 @@ export const TextControls = ({
             disabled={isGenerating}
           />
         </div>
+        
+        {/* <-- NUEVO CAMPO DE AUTOR --> */}
+        <div className="space-y-2">
+          <Label htmlFor="author" className="text-base font-medium">
+            Autor (Opcional):
+          </Label>
+          <Textarea
+            id="author"
+            placeholder="@TuNombreDeUsuario..."
+            value={author}
+            onChange={(e) => onAuthorChange(e.target.value)}
+            className="min-h-16 resize-none transition-all focus:shadow-soft"
+            disabled={isGenerating}
+          />
+        </div>
+        {/* <-- FIN CAMPO DE AUTOR --> */}
+
 
         <div className="space-y-2">
           <Label htmlFor="font" className="text-base font-medium">
