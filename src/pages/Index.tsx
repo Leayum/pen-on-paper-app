@@ -77,11 +77,15 @@ Añade el siguiente texto directamente sobre la imagen de la hoja de papel en bl
 
 El objetivo es lograr un efecto de escritura a mano **ultra-realista**, donde la **tinta parezca haber sido absorbida en las fibras del papel** y genere una **sombra ligera** para dar profundidad. No debe verse como texto digital plano; la imagen editada debe parecer una fotografía real de la hoja con el texto **integrado** como si siempre hubiera estado allí.
 
-* **Estilo de Caligrafía:** Utiliza una fuente que simule una escritura "${styleDescription}" con un trazo natural y humano.
-* **Color de la Tinta:** Utiliza ${inkDescription}.
-* **Contenido:** El texto a añadir es: "${text}"
+**INSTRUCCIONES CLAVE DE REPRODUCCIÓN:**
+1.  **DEBES COPIAR EL TEXTO EXACTAMENTE** como se indica en la sección 'CONTENIDO' sin ningún error tipográfico, ortográfico o de sintaxis.
+2.  **Estilo de Caligrafía:** Simula una escritura "${styleDescription}" con un trazo natural y humano.
+3.  **Color de la Tinta:** Utiliza ${inkDescription}.
 
-Genera solo la imagen editada como resultado.
+**CONTENIDO A AÑADIR (COPIAR EXACTAMENTE):**
+"${text}"
+
+**FINALMENTE:** Genera solo la imagen editada como resultado.
       `;
 
       console.log("--- PROMPT ENVIADO A GEMINI ---");
