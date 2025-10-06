@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { ImageUpload } from "@/components/ImageUpload";
-import { PreviewCanvas } from "@/components/PreviewCanvas";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Upload, Link as LinkIcon, X, Download } from "lucide-react";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -32,41 +35,255 @@ export const SimpleEditor = () => {
   const [author, setAuthor] = useState("");
   const [fontStyle, setFontStyle] = useState("Dancing Script");
   const [inkColor, setInkColor] = useState("#000000");
+  const [fontSize, setFontSize] = useState<number>(40);
+  const [imageUrl, setImageUrl] = useState("");
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       setImage(e.target?.result as string);
+      toast.success("Imagen cargada correctamente");
     };
     reader.readAsDataURL(file);
   };
 
   const handleImageRemove = () => {
     setImage(null);
+    setImageUrl("");
+    toast.info("Imagen eliminada");
+  };
+
+  const handleLoadFromUrl = () => {
+    if (!imageUrl.trim()) {
+      toast.error("Por favor ingresa una URL válida");
+      return;
+    }
+    
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      setImage(imageUrl);
+      toast.success("Imagen cargada desde URL");
+    };
+    img.onerror = () => {
+      toast.error("Error al cargar la imagen desde la URL");
+    };
+    img.src = imageUrl;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+  };
+
+  // Lógica del canvas: dibuja imagen y texto con sombra
+  useEffect(() => {
+    if (!canvasRef.current || !image) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Dibuja la imagen de fondo
+      ctx.drawImage(img, 0, 0);
+
+      // Dibuja el texto principal si existe
+      if (text.trim()) {
+        ctx.font = `${fontSize}px Arial`;
+        ctx.fillStyle = inkColor;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // Añade sombra visible
+        ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+
+        const maxWidth = canvas.width * 0.8;
+        const words = text.split(" ");
+        let line = "";
+        const lines: string[] = [];
+        const lineHeight = fontSize * 1.4;
+
+        words.forEach((word) => {
+          const testLine = line + word + " ";
+          const metrics = ctx.measureText(testLine);
+          if (metrics.width > maxWidth && line.trim()) {
+            lines.push(line);
+            line = word + " ";
+          } else {
+            line = testLine;
+          }
+        });
+        lines.push(line);
+
+        const startY = canvas.height / 2 - (lines.length * lineHeight) / 2;
+        lines.forEach((line, index) => {
+          ctx.fillText(line.trim(), canvas.width / 2, startY + index * lineHeight);
+        });
+      }
+
+      // Dibuja el autor si existe
+      if (author.trim()) {
+        const authorFontSize = fontSize * 0.6;
+        const extraSpacingFactor = 3.5;
+        
+        const textLines = text.trim() ? Math.ceil(ctx.measureText(text).width / (canvas.width * 0.8)) : 0;
+        const lineHeight = fontSize * 1.4;
+        const startY = canvas.height / 2 - (textLines * lineHeight) / 2;
+        const authorY = startY + textLines * lineHeight + authorFontSize * 0.8 + lineHeight * extraSpacingFactor;
+        const authorX = canvas.width * 0.9 - authorFontSize * 0.5;
+        
+        ctx.font = `${authorFontSize}px Arial`;
+        ctx.textAlign = "right";
+        
+        // Sombra para el autor
+        ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+        
+        ctx.fillText(author.trim(), authorX, authorY);
+      }
+    };
+
+    img.src = image;
+  }, [image, text, author, fontStyle, inkColor, fontSize]);
+
+  const handleDownload = () => {
+    if (!canvasRef.current || !image) {
+      toast.warning("No hay imagen para descargar");
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.download = "editor-simple-resultado.png";
+    link.href = canvasRef.current.toDataURL("image/png");
+    link.click();
+    toast.success("Imagen descargada");
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Columna 1: Cargar Imagen */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <ImageUpload
-          image={image}
-          onImageUpload={handleImageUpload}
-          onImageRemove={handleImageRemove}
-        />
+        <Card className="h-full shadow-medium">
+          <CardHeader>
+            <CardTitle className="text-2xl font-semibold">Subir Imagen Original</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="border-2 border-dashed border-border rounded-lg overflow-hidden bg-gradient-soft relative">
+              {image ? (
+                <div className="relative">
+                  <img
+                    src={image}
+                    alt="Imagen cargada"
+                    className="w-full h-64 object-contain"
+                  />
+                  <Button
+                    onClick={handleImageRemove}
+                    size="icon"
+                    variant="destructive"
+                    className="absolute top-2 right-2"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="w-full h-64 flex items-center justify-center text-muted-foreground">
+                  <p>Sube una imagen para comenzar</p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-base font-medium">Cargar desde Archivo:</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full"
+                variant="outline"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Seleccionar Archivo
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="image-url" className="text-base font-medium">
+                O cargar desde URL:
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="image-url"
+                  type="url"
+                  placeholder="https://ejemplo.com/imagen.jpg"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  className="flex-1"
+                />
+                <Button onClick={handleLoadFromUrl} variant="outline">
+                  <LinkIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
+      {/* Columna 2: Canvas Preview */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-        <PreviewCanvas
-          image={image}
-          text={text}
-          author={author}
-          fontStyle={fontStyle}
-          inkColor={inkColor}
-          generatedImage={null}
-          isGenerating={false}
-        />
+        <Card className="h-full shadow-medium">
+          <CardHeader>
+            <CardTitle className="text-2xl font-semibold">Previsualización</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="border-2 border-border rounded-lg overflow-hidden bg-gradient-soft relative">
+              {image ? (
+                <canvas
+                  ref={canvasRef}
+                  className="w-full h-80 object-contain"
+                />
+              ) : (
+                <div className="w-full h-80 flex items-center justify-center text-muted-foreground">
+                  <p>La vista previa aparecerá aquí</p>
+                </div>
+              )}
+            </div>
+
+            <Button
+              onClick={handleDownload}
+              disabled={!image}
+              className="w-full bg-gradient-accent shadow-medium hover:shadow-strong transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Descargar Imagen
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
+      {/* Columna 3: Controles */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200">
         <Card className="h-full shadow-medium">
           <CardHeader>
@@ -102,25 +319,18 @@ export const SimpleEditor = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="simple-font" className="text-base font-medium">
-                Estilo de Caligrafía:
+              <Label htmlFor="font-size" className="text-base font-medium">
+                Tamaño de Fuente: {fontSize}px
               </Label>
-              <Select value={fontStyle} onValueChange={setFontStyle}>
-                <SelectTrigger id="simple-font" className="transition-all focus:shadow-soft">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {fontStyles.map((font) => (
-                    <SelectItem
-                      key={font.value}
-                      value={font.value}
-                      style={{ fontFamily: font.value }}
-                    >
-                      {font.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Slider
+                id="font-size"
+                min={10}
+                max={100}
+                step={1}
+                value={[fontSize]}
+                onValueChange={(value) => setFontSize(value[0])}
+                className="w-full"
+              />
             </div>
 
             <div className="space-y-2">
@@ -149,7 +359,7 @@ export const SimpleEditor = () => {
 
             <div className="pt-4 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">
-                Vista previa en tiempo real. Descarga directamente desde el canvas.
+                Vista previa en tiempo real con sombras realistas
               </p>
             </div>
           </CardContent>
