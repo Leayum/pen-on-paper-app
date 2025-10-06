@@ -102,7 +102,9 @@ export const SimpleEditor = () => {
 
       // Dibuja el texto principal si existe
       if (text.trim()) {
+        ctx.font = `${fontSize}px Arial`;
         ctx.fillStyle = inkColor;
+        ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
         // Añade sombra visible
@@ -112,69 +114,26 @@ export const SimpleEditor = () => {
         ctx.shadowOffsetY = 2;
 
         const maxWidth = canvas.width * 0.8;
+        const words = text.split(" ");
+        let line = "";
+        const lines: string[] = [];
         const lineHeight = fontSize * 1.4;
 
-        // Función para parsear formato de una palabra
-        const parseWordFormat = (word: string) => {
-          // **texto** = negrita
-          if (word.startsWith("**") && word.endsWith("**") && word.length > 4) {
-            return { text: word.slice(2, -2), style: "bold" };
-          }
-          // *texto* = cursiva
-          if (word.startsWith("*") && word.endsWith("*") && word.length > 2) {
-            return { text: word.slice(1, -1), style: "italic" };
-          }
-          return { text: word, style: "normal" };
-        };
-
-        // Dividir en líneas con word wrapping
-        const words = text.split(" ");
-        const lines: Array<Array<{ text: string; style: string }>> = [];
-        let currentLine: Array<{ text: string; style: string }> = [];
-        let currentLineWidth = 0;
-
         words.forEach((word) => {
-          const parsed = parseWordFormat(word);
-          const testFont = `${parsed.style === "bold" ? "bold" : parsed.style === "italic" ? "italic" : ""} ${fontSize}px Arial`.trim();
-          ctx.font = testFont || `${fontSize}px Arial`;
-          const wordWidth = ctx.measureText(parsed.text + " ").width;
-
-          if (currentLineWidth + wordWidth > maxWidth && currentLine.length > 0) {
-            lines.push(currentLine);
-            currentLine = [parsed];
-            currentLineWidth = wordWidth;
+          const testLine = line + word + " ";
+          const metrics = ctx.measureText(testLine);
+          if (metrics.width > maxWidth && line.trim()) {
+            lines.push(line);
+            line = word + " ";
           } else {
-            currentLine.push(parsed);
-            currentLineWidth += wordWidth;
+            line = testLine;
           }
         });
-        if (currentLine.length > 0) {
-          lines.push(currentLine);
-        }
+        lines.push(line);
 
-        // Dibujar cada línea con estilos aplicados
         const startY = canvas.height / 2 - (lines.length * lineHeight) / 2;
-        lines.forEach((line, lineIndex) => {
-          // Calcular ancho total de la línea para centrado
-          let totalLineWidth = 0;
-          line.forEach((word) => {
-            const testFont = `${word.style === "bold" ? "bold" : word.style === "italic" ? "italic" : ""} ${fontSize}px Arial`.trim();
-            ctx.font = testFont || `${fontSize}px Arial`;
-            totalLineWidth += ctx.measureText(word.text + " ").width;
-          });
-
-          // Posición inicial para centrar la línea
-          let currentX = canvas.width / 2 - totalLineWidth / 2;
-          const currentY = startY + lineIndex * lineHeight;
-
-          // Dibujar cada palabra con su estilo
-          line.forEach((word) => {
-            const fontStyle = word.style === "bold" ? "bold" : word.style === "italic" ? "italic" : "";
-            ctx.font = fontStyle ? `${fontStyle} ${fontSize}px Arial` : `${fontSize}px Arial`;
-            
-            ctx.fillText(word.text, currentX, currentY);
-            currentX += ctx.measureText(word.text + " ").width;
-          });
+        lines.forEach((line, index) => {
+          ctx.fillText(line.trim(), canvas.width / 2, startY + index * lineHeight);
         });
       }
 
