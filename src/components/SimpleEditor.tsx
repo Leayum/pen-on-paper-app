@@ -81,161 +81,195 @@ export const SimpleEditor = () => {
     }
   };
 
+  // Función reutilizable para dibujar en cualquier canvas
+  const drawOnCanvas = (canvas: HTMLCanvasElement, img: HTMLImageElement) => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Dibuja la imagen de fondo cubriendo el canvas (object-fit: cover)
+    const imgAspect = img.width / img.height;
+    const canvasAspect = canvas.width / canvas.height;
+    
+    let drawWidth, drawHeight, offsetX, offsetY;
+    
+    if (imgAspect > canvasAspect) {
+      // Imagen más ancha que el canvas
+      drawHeight = canvas.height;
+      drawWidth = img.width * (canvas.height / img.height);
+      offsetX = (canvas.width - drawWidth) / 2;
+      offsetY = 0;
+    } else {
+      // Imagen más alta que el canvas
+      drawWidth = canvas.width;
+      drawHeight = img.height * (canvas.width / img.width);
+      offsetX = 0;
+      offsetY = (canvas.height - drawHeight) / 2;
+    }
+    
+    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+
+    // Dibuja el texto principal si existe
+    if (text.trim()) {
+      ctx.fillStyle = inkColor;
+      ctx.textBaseline = "middle";
+
+      // Añade sombra visible
+      ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+
+      const maxWidth = canvas.width * 0.8;
+      const lineHeight = fontSize * 1.4;
+
+      // Función para parsear el estilo de una palabra
+      const parseWord = (word: string): { text: string; style: string } => {
+        if (word.startsWith("**") && word.endsWith("**") && word.length > 4) {
+          return { text: word.slice(2, -2), style: "bold" };
+        }
+        if (word.startsWith("*") && word.endsWith("*") && word.length > 2) {
+          return { text: word.slice(1, -1), style: "italic" };
+        }
+        return { text: word, style: "normal" };
+      };
+
+      const getFontString = (style: string): string => {
+        if (style === "bold") return `bold ${fontSize}px Arial`;
+        if (style === "italic") return `italic ${fontSize}px Arial`;
+        return `${fontSize}px Arial`;
+      };
+
+      const words = text.split(" ");
+      const styledWords = words.map(parseWord);
+
+      interface StyledWord {
+        text: string;
+        style: string;
+      }
+      const lines: StyledWord[][] = [];
+      let currentLine: StyledWord[] = [];
+      let currentLineWidth = 0;
+
+      styledWords.forEach((word) => {
+        ctx.font = getFontString(word.style);
+        const wordWidth = ctx.measureText(word.text).width;
+        const spaceWidth = ctx.measureText(" ").width;
+        const totalWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
+
+        if (totalWidth > maxWidth && currentLine.length > 0) {
+          lines.push([...currentLine]);
+          currentLine = [word];
+          currentLineWidth = wordWidth;
+        } else {
+          currentLine.push(word);
+          currentLineWidth = totalWidth;
+        }
+      });
+      if (currentLine.length > 0) {
+        lines.push(currentLine);
+      }
+
+      const startY = canvas.height / 2 - (lines.length * lineHeight) / 2;
+      
+      lines.forEach((line, lineIndex) => {
+        let lineWidth = 0;
+        line.forEach((word, wordIndex) => {
+          ctx.font = getFontString(word.style);
+          lineWidth += ctx.measureText(word.text).width;
+          if (wordIndex < line.length - 1) {
+            lineWidth += ctx.measureText(" ").width;
+          }
+        });
+
+        let x = (canvas.width - lineWidth) / 2;
+        const y = startY + lineIndex * lineHeight;
+
+        line.forEach((word, wordIndex) => {
+          ctx.font = getFontString(word.style);
+          ctx.textAlign = "left";
+          ctx.fillText(word.text, x, y);
+          
+          x += ctx.measureText(word.text).width;
+          if (wordIndex < line.length - 1) {
+            x += ctx.measureText(" ").width;
+          }
+        });
+      });
+    }
+
+    // Dibuja el autor si existe
+    if (author.trim()) {
+      const authorFontSize = fontSize * 0.6;
+      const extraSpacingFactor = 3.5;
+      
+      const textLines = text.trim() ? Math.ceil(ctx.measureText(text).width / (canvas.width * 0.8)) : 0;
+      const lineHeight = fontSize * 1.4;
+      const startY = canvas.height / 2 - (textLines * lineHeight) / 2;
+      const authorY = startY + textLines * lineHeight + authorFontSize * 0.8 + lineHeight * extraSpacingFactor;
+      const authorX = canvas.width * 0.9 - authorFontSize * 0.5;
+      
+      ctx.font = `${authorFontSize}px Arial`;
+      ctx.textAlign = "right";
+      
+      ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      
+      ctx.fillText(author.trim(), authorX, authorY);
+    }
+  };
+
   // Lógica del canvas: dibuja imagen y texto con sombra
   useEffect(() => {
     if (!canvasRef.current || !image) return;
 
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
     const img = new Image();
     img.crossOrigin = "anonymous";
     
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Dibuja la imagen de fondo
-      ctx.drawImage(img, 0, 0);
-
-      // Dibuja el texto principal si existe
-      if (text.trim()) {
-        ctx.fillStyle = inkColor;
-        ctx.textBaseline = "middle";
-
-        // Añade sombra visible
-        ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-        ctx.shadowBlur = 10;
-        ctx.shadowOffsetX = 2;
-        ctx.shadowOffsetY = 2;
-
-        const maxWidth = canvas.width * 0.8;
-        const lineHeight = fontSize * 1.4;
-
-        // Función para parsear el estilo de una palabra
-        const parseWord = (word: string): { text: string; style: string } => {
-          // Negrita: **texto**
-          if (word.startsWith("**") && word.endsWith("**") && word.length > 4) {
-            return { text: word.slice(2, -2), style: "bold" };
-          }
-          // Cursiva: *texto*
-          if (word.startsWith("*") && word.endsWith("*") && word.length > 2) {
-            return { text: word.slice(1, -1), style: "italic" };
-          }
-          return { text: word, style: "normal" };
-        };
-
-        // Función para obtener el font string según el estilo
-        const getFontString = (style: string): string => {
-          if (style === "bold") return `bold ${fontSize}px Arial`;
-          if (style === "italic") return `italic ${fontSize}px Arial`;
-          return `${fontSize}px Arial`;
-        };
-
-        // Procesar palabras con estilos
-        const words = text.split(" ");
-        const styledWords = words.map(parseWord);
-
-        // Crear líneas con wrapping, considerando los estilos
-        interface StyledWord {
-          text: string;
-          style: string;
-        }
-        const lines: StyledWord[][] = [];
-        let currentLine: StyledWord[] = [];
-        let currentLineWidth = 0;
-
-        styledWords.forEach((word, index) => {
-          ctx.font = getFontString(word.style);
-          const wordWidth = ctx.measureText(word.text).width;
-          const spaceWidth = ctx.measureText(" ").width;
-          const totalWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
-
-          if (totalWidth > maxWidth && currentLine.length > 0) {
-            lines.push([...currentLine]);
-            currentLine = [word];
-            currentLineWidth = wordWidth;
-          } else {
-            currentLine.push(word);
-            currentLineWidth = totalWidth;
-          }
-        });
-        if (currentLine.length > 0) {
-          lines.push(currentLine);
-        }
-
-        // Dibujar cada línea centrada
-        const startY = canvas.height / 2 - (lines.length * lineHeight) / 2;
-        
-        lines.forEach((line, lineIndex) => {
-          // Calcular ancho total de la línea
-          let lineWidth = 0;
-          line.forEach((word, wordIndex) => {
-            ctx.font = getFontString(word.style);
-            lineWidth += ctx.measureText(word.text).width;
-            if (wordIndex < line.length - 1) {
-              lineWidth += ctx.measureText(" ").width;
-            }
-          });
-
-          // Posición inicial para centrar
-          let x = (canvas.width - lineWidth) / 2;
-          const y = startY + lineIndex * lineHeight;
-
-          // Dibujar cada palabra con su estilo
-          line.forEach((word, wordIndex) => {
-            ctx.font = getFontString(word.style);
-            ctx.textAlign = "left";
-            ctx.fillText(word.text, x, y);
-            
-            x += ctx.measureText(word.text).width;
-            if (wordIndex < line.length - 1) {
-              x += ctx.measureText(" ").width;
-            }
-          });
-        });
-      }
-
-      // Dibuja el autor si existe
-      if (author.trim()) {
-        const authorFontSize = fontSize * 0.6;
-        const extraSpacingFactor = 3.5;
-        
-        const textLines = text.trim() ? Math.ceil(ctx.measureText(text).width / (canvas.width * 0.8)) : 0;
-        const lineHeight = fontSize * 1.4;
-        const startY = canvas.height / 2 - (textLines * lineHeight) / 2;
-        const authorY = startY + textLines * lineHeight + authorFontSize * 0.8 + lineHeight * extraSpacingFactor;
-        const authorX = canvas.width * 0.9 - authorFontSize * 0.5;
-        
-        ctx.font = `${authorFontSize}px Arial`;
-        ctx.textAlign = "right";
-        
-        // Sombra para el autor
-        ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-        ctx.shadowBlur = 8;
-        ctx.shadowOffsetX = 2;
-        ctx.shadowOffsetY = 2;
-        
-        ctx.fillText(author.trim(), authorX, authorY);
-      }
+      drawOnCanvas(canvas, img);
     };
 
     img.src = image;
   }, [image, text, author, fontStyle, inkColor, fontSize]);
 
-  const handleDownload = () => {
-    if (!canvasRef.current || !image) {
+  const handleDownload = (aspectRatio: "1:1" | "9:16") => {
+    if (!image) {
       toast.warning("No hay imagen para descargar");
       return;
     }
 
-    const link = document.createElement("a");
-    link.download = "editor-simple-resultado.png";
-    link.href = canvasRef.current.toDataURL("image/png");
-    link.click();
-    toast.success("Imagen descargada");
+    const tempCanvas = document.createElement("canvas");
+    
+    // Establecer dimensiones según la proporción
+    if (aspectRatio === "1:1") {
+      tempCanvas.width = 1080;
+      tempCanvas.height = 1080;
+    } else {
+      tempCanvas.width = 1080;
+      tempCanvas.height = 1920;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    img.onload = () => {
+      drawOnCanvas(tempCanvas, img);
+      
+      const link = document.createElement("a");
+      link.download = `editor-simple-${aspectRatio === "1:1" ? "cuadrado" : "tiktok"}.png`;
+      link.href = tempCanvas.toDataURL("image/png");
+      link.click();
+      toast.success(`Imagen ${aspectRatio} descargada`);
+    };
+
+    img.src = image;
   };
 
   return (
@@ -332,14 +366,25 @@ export const SimpleEditor = () => {
               )}
             </div>
 
-            <Button
-              onClick={handleDownload}
-              disabled={!image}
-              className="w-full bg-gradient-accent shadow-medium hover:shadow-strong transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Descargar Imagen
-            </Button>
+            <div className="space-y-3">
+              <Button
+                onClick={() => handleDownload("1:1")}
+                disabled={!image}
+                className="w-full bg-gradient-accent shadow-medium hover:shadow-strong transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Cuadrado (1:1)
+              </Button>
+              
+              <Button
+                onClick={() => handleDownload("9:16")}
+                disabled={!image}
+                className="w-full bg-gradient-accent shadow-medium hover:shadow-strong transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                TikTok (9:16)
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
