@@ -117,11 +117,11 @@ export const SimpleEditor = () => {
       ctx.fillStyle = inkColor;
       ctx.textBaseline = "middle";
 
-      // Añade sombra visible
-      ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetX = 2;
-      ctx.shadowOffsetY = 2;
+      // Añade sombra mejorada
+      ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
+      ctx.shadowBlur = 15;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 3;
 
       const maxWidth = canvas.width * 0.8;
       const lineHeight = fontSize * 1.4;
@@ -143,39 +143,56 @@ export const SimpleEditor = () => {
         return `${fontSize}px Arial`;
       };
 
-      const words = text.split(" ");
-      const styledWords = words.map(parseWord);
-
+      // Procesar texto respetando saltos de línea
+      const paragraphs = text.split("\n");
+      
       interface StyledWord {
         text: string;
         style: string;
       }
       const lines: StyledWord[][] = [];
-      let currentLine: StyledWord[] = [];
-      let currentLineWidth = 0;
 
-      styledWords.forEach((word) => {
-        ctx.font = getFontString(word.style);
-        const wordWidth = ctx.measureText(word.text).width;
-        const spaceWidth = ctx.measureText(" ").width;
-        const totalWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
+      paragraphs.forEach((paragraph) => {
+        if (paragraph.trim() === "") {
+          // Línea vacía, añadir una línea en blanco
+          lines.push([]);
+          return;
+        }
 
-        if (totalWidth > maxWidth && currentLine.length > 0) {
-          lines.push([...currentLine]);
-          currentLine = [word];
-          currentLineWidth = wordWidth;
-        } else {
-          currentLine.push(word);
-          currentLineWidth = totalWidth;
+        const words = paragraph.split(" ");
+        const styledWords = words.map(parseWord);
+        
+        let currentLine: StyledWord[] = [];
+        let currentLineWidth = 0;
+
+        styledWords.forEach((word) => {
+          ctx.font = getFontString(word.style);
+          const wordWidth = ctx.measureText(word.text).width;
+          const spaceWidth = ctx.measureText(" ").width;
+          const totalWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
+
+          if (totalWidth > maxWidth && currentLine.length > 0) {
+            lines.push([...currentLine]);
+            currentLine = [word];
+            currentLineWidth = wordWidth;
+          } else {
+            currentLine.push(word);
+            currentLineWidth = totalWidth;
+          }
+        });
+        if (currentLine.length > 0) {
+          lines.push(currentLine);
         }
       });
-      if (currentLine.length > 0) {
-        lines.push(currentLine);
-      }
 
       const startY = canvas.height / 2 - (lines.length * lineHeight) / 2;
       
       lines.forEach((line, lineIndex) => {
+        // Si es una línea vacía, solo avanzar el espacio
+        if (line.length === 0) {
+          return;
+        }
+
         let lineWidth = 0;
         line.forEach((word, wordIndex) => {
           ctx.font = getFontString(word.style);
@@ -410,6 +427,9 @@ export const SimpleEditor = () => {
                 onChange={(e) => setText(e.target.value)}
                 className="min-h-32 resize-none transition-all focus:shadow-soft"
               />
+              <p className="text-sm text-muted-foreground">
+                💡 Tip: Usa **texto** para <strong>negrita</strong> y *texto* para <em>cursiva</em>. Presiona Enter para saltos de línea.
+              </p>
             </div>
 
             <div className="space-y-2">
