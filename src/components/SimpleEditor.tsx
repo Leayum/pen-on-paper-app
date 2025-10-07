@@ -24,6 +24,7 @@ const fontStyles = [
 
 const inkColors = [
   { value: "#000000", label: "Negro Profundo" },
+  { value: "#FFFFFF", label: "Blanco Puro" },
   { value: "#1e40af", label: "Azul Clásico" },
   { value: "#991b1b", label: "Rojo Intenso" },
   { value: "#064e3b", label: "Verde Bosque" },
@@ -37,6 +38,7 @@ export const SimpleEditor = () => {
   const [inkColor, setInkColor] = useState("#000000");
   const [fontSize, setFontSize] = useState<number>(40);
   const [imageUrl, setImageUrl] = useState("");
+  const [aspectRatio, setAspectRatio] = useState<"1:1" | "9:16">("1:1");
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -231,45 +233,31 @@ export const SimpleEditor = () => {
     img.crossOrigin = "anonymous";
     
     img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
+      // Usar las dimensiones según la proporción seleccionada
+      if (aspectRatio === "1:1") {
+        canvas.width = 1080;
+        canvas.height = 1080;
+      } else {
+        canvas.width = 1080;
+        canvas.height = 1920;
+      }
       drawOnCanvas(canvas, img);
     };
 
     img.src = image;
-  }, [image, text, author, fontStyle, inkColor, fontSize]);
+  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio]);
 
-  const handleDownload = (aspectRatio: "1:1" | "9:16") => {
+  const handleDownload = () => {
     if (!image) {
       toast.warning("No hay imagen para descargar");
       return;
     }
 
-    const tempCanvas = document.createElement("canvas");
-    
-    // Establecer dimensiones según la proporción
-    if (aspectRatio === "1:1") {
-      tempCanvas.width = 1080;
-      tempCanvas.height = 1080;
-    } else {
-      tempCanvas.width = 1080;
-      tempCanvas.height = 1920;
-    }
-
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    
-    img.onload = () => {
-      drawOnCanvas(tempCanvas, img);
-      
-      const link = document.createElement("a");
-      link.download = `editor-simple-${aspectRatio === "1:1" ? "cuadrado" : "tiktok"}.png`;
-      link.href = tempCanvas.toDataURL("image/png");
-      link.click();
-      toast.success(`Imagen ${aspectRatio} descargada`);
-    };
-
-    img.src = image;
+    const link = document.createElement("a");
+    link.download = `editor-simple-${aspectRatio === "1:1" ? "cuadrado" : "tiktok"}.png`;
+    link.href = canvasRef.current?.toDataURL("image/png") || "";
+    link.click();
+    toast.success(`Imagen ${aspectRatio} descargada`);
   };
 
   return (
@@ -367,22 +355,35 @@ export const SimpleEditor = () => {
             </div>
 
             <div className="space-y-3">
-              <Button
-                onClick={() => handleDownload("1:1")}
-                disabled={!image}
-                className="w-full bg-gradient-accent shadow-medium hover:shadow-strong transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Cuadrado (1:1)
-              </Button>
+              <div className="space-y-2">
+                <Label className="text-base font-medium">
+                  Proporción de Previsualización:
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    onClick={() => setAspectRatio("1:1")}
+                    variant={aspectRatio === "1:1" ? "default" : "outline"}
+                    className="w-full"
+                  >
+                    Cuadrado (1:1)
+                  </Button>
+                  <Button
+                    onClick={() => setAspectRatio("9:16")}
+                    variant={aspectRatio === "9:16" ? "default" : "outline"}
+                    className="w-full"
+                  >
+                    TikTok (9:16)
+                  </Button>
+                </div>
+              </div>
               
               <Button
-                onClick={() => handleDownload("9:16")}
+                onClick={handleDownload}
                 disabled={!image}
                 className="w-full bg-gradient-accent shadow-medium hover:shadow-strong transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download className="h-4 w-4 mr-2" />
-                TikTok (9:16)
+                Descargar {aspectRatio}
               </Button>
             </div>
           </CardContent>
