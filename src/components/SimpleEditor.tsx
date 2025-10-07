@@ -112,18 +112,12 @@ export const SimpleEditor = () => {
     
     ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 
-    // Reinicia la sombra para que solo afecte al texto
-    ctx.shadowColor = "rgba(0, 0, 0, 0)";
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-
     // Dibuja el texto principal si existe
     if (text.trim()) {
       ctx.fillStyle = inkColor;
       ctx.textBaseline = "middle";
 
-      // Añade sombra mejorada para el texto principal
+      // Añade sombra mejorada
       ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
       ctx.shadowBlur = 15;
       ctx.shadowOffsetX = 3;
@@ -132,192 +126,118 @@ export const SimpleEditor = () => {
       const maxWidth = canvas.width * 0.8;
       const lineHeight = fontSize * 1.4;
 
-      const getFontString = (style: "normal" | "bold" | "italic"): string => {
-        if (style === "bold") return `bold ${fontSize}px ${fontStyle}`;
-        if (style === "italic") return `italic ${fontSize}px ${fontStyle}`;
-        return `${fontSize}px ${fontStyle}`;
+      // Función para parsear el estilo de una palabra
+      const parseWord = (word: string): { text: string; style: string } => {
+        if (word.startsWith("**") && word.endsWith("**") && word.length > 4) {
+          return { text: word.slice(2, -2), style: "bold" };
+        }
+        if (word.startsWith("*") && word.endsWith("*") && word.length > 2) {
+          return { text: word.slice(1, -1), style: "italic" };
+        }
+        return { text: word, style: "normal" };
       };
 
-      interface StyledToken {
+      const getFontString = (style: string): string => {
+        if (style === "bold") return `bold ${fontSize}px Arial`;
+        if (style === "italic") return `italic ${fontSize}px Arial`;
+        return `${fontSize}px Arial`;
+      };
+
+      // Procesar texto respetando saltos de línea
+      const paragraphs = text.split("\n");
+      
+      interface StyledWord {
         text: string;
-        style: "normal" | "bold" | "italic";
+        style: string;
       }
+      const lines: StyledWord[][] = [];
 
-      // --- Nuevo Tokenizador (soporta múltiples palabras y saltos de línea) ---
-      const tokenize = (input: string): StyledToken[] => {
-        const tokens: StyledToken[] = [];
-        
-        // Split text by paragraphs (newlines) first
-        const paragraphs = input.split('\n');
-
-        paragraphs.forEach((paragraph, pIndex) => {
-            if (pIndex > 0) {
-                // Add explicit line break token for each newline
-                tokens.push({ text: '\n', style: 'normal' });
-            }
-            
-            // Regex to find markdown: 1. **bold**, 2. _italic_, 3. Plain text/spaces
-            // Updated regex to use _..._ for italic
-            const regex = /(\*\*.*?\*\*)|(_.*?_)|([^*_]+)/g;
-            let match;
-            
-            while ((match = regex.exec(paragraph)) !== null) {
-                const fullMatch = match[0];
-                
-                if (fullMatch.startsWith('**') && fullMatch.endsWith('**') && fullMatch.length > 3) {
-                    // Bold: text inside **...** (min length is 4: ****)
-                    fullMatch.slice(2, -2).split(/(\s+)/).forEach(part => {
-                        if (part.length > 0) {
-                            tokens.push({ text: part, style: 'bold' });
-                        }
-                    });
-                } else if (fullMatch.startsWith('_') && fullMatch.endsWith('_') && fullMatch.length > 2) {
-                    // Italic: text inside _..._ (min length is 3: __)
-                    fullMatch.slice(1, -1).split(/(\s+)/).forEach(part => {
-                        if (part.length > 0) {
-                            tokens.push({ text: part, style: 'italic' });
-                        }
-                    });
-                } else if (fullMatch.length > 0) {
-                    // Plain text or unclosed/misformatted tags treated as literal text.
-                    // Split by spaces, keeping spaces
-                    fullMatch.split(/(\s+)/).forEach(part => {
-                        if (part.length > 0) {
-                            tokens.push({ text: part, style: 'normal' });
-                        }
-                    });
-                }
-            }
-        });
-
-        return tokens;
-      };
-      
-      const tokens = tokenize(text);
-      
-      // --- New Line Breaking Logic (Flow) ---
-      const finalLines: StyledToken[][] = [];
-      let currentLine: StyledToken[] = [];
-      let currentLineWidth = 0;
-
-      tokens.forEach(token => {
-          // Explicit line break from \n in the source text
-          if (token.text === '\n') {
-              if (currentLine.length > 0) {
-                  finalLines.push(currentLine);
-              }
-              finalLines.push([]); // Add an empty line token for spacing
-              currentLine = [];
-              currentLineWidth = 0;
-              return;
-          }
-          
-          // Spaces don't wrap a line, but they advance the cursor
-          const isSpace = token.text.match(/^\s+$/);
-          
-          // Calculate the width of the current token (which is a word or space)
-          ctx.font = getFontString(token.style);
-          const tokenWidth = ctx.measureText(token.text).width;
-          
-          // Check for line wrapping:
-          // 1. If adding the token exceeds max width
-          // 2. The token is not just a space
-          // 3. The current line is not empty (to prevent an empty line if the first word is too long)
-          if (currentLineWidth + tokenWidth > maxWidth && !isSpace && currentLine.length > 0) {
-              // Wrap: Push current line and start new one
-              finalLines.push(currentLine);
-              currentLine = [token];
-              currentLineWidth = tokenWidth;
-          } else {
-              // No wrap: Add to current line
-              currentLine.push(token);
-              currentLineWidth += tokenWidth;
-          }
-      });
-      
-      // Push the last remaining line if it's not empty
-      if (currentLine.length > 0) {
-          finalLines.push(currentLine);
-      }
-      
-      // --- Drawing Lines ---
-      const finalLineCount = finalLines.length;
-      const contentHeight = finalLineCount * lineHeight;
-
-      // Start Y position calculation for vertical centering
-      let currentY = canvas.height / 2 - contentHeight / 2 + lineHeight / 2;
-      
-      finalLines.forEach((line) => {
-        if (line.length === 0) { 
-            currentY += lineHeight; // Advance y for the explicit newline
-            return;
+      paragraphs.forEach((paragraph) => {
+        if (paragraph.trim() === "") {
+          // Línea vacía, añadir una línea en blanco
+          lines.push([]);
+          return;
         }
 
-        // Calculate the total width of the *current* line to center it
-        let lineWidth = 0;
-        line.forEach(token => {
-            ctx.font = getFontString(token.style);
-            lineWidth += ctx.measureText(token.text).width;
-        });
+        const words = paragraph.split(" ");
+        const styledWords = words.map(parseWord);
+        
+        let currentLine: StyledWord[] = [];
+        let currentLineWidth = 0;
 
-        // Calculate start X for horizontal centering
-        let currentX = (canvas.width - lineWidth) / 2;
-        
-        // Draw each token in the line
-        line.forEach(token => {
-            // Apply font style and draw
-            ctx.font = getFontString(token.style);
-            ctx.textAlign = "left";
-            
-            // Draw the text
-            ctx.fillText(token.text, currentX, currentY);
-            
-            // Move cursor for the next token
-            currentX += ctx.measureText(token.text).width;
+        styledWords.forEach((word) => {
+          ctx.font = getFontString(word.style);
+          const wordWidth = ctx.measureText(word.text).width;
+          const spaceWidth = ctx.measureText(" ").width;
+          const totalWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
+
+          if (totalWidth > maxWidth && currentLine.length > 0) {
+            lines.push([...currentLine]);
+            currentLine = [word];
+            currentLineWidth = wordWidth;
+          } else {
+            currentLine.push(word);
+            currentLineWidth = totalWidth;
+          }
         });
-        
-        currentY += lineHeight;
+        if (currentLine.length > 0) {
+          lines.push(currentLine);
+        }
       });
 
-      // --- Drawing Author (when text is present) ---
-      if (author.trim()) {
-        // Reset shadow for author text (it uses the same shadow as the main text)
-        ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-        ctx.shadowBlur = 8;
-        ctx.shadowOffsetX = 2;
-        ctx.shadowOffsetY = 2;
-        
-        const authorFontSize = fontSize * 0.6;
-        const extraSpacingFactor = 3.5;
-        
-        // The Y position starts after the entire text block, plus spacing
-        const authorY = (canvas.height / 2) - (contentHeight / 2) + contentHeight + authorFontSize * 0.8 + lineHeight * extraSpacingFactor;
-        
-        const authorX = canvas.width * 0.9 - authorFontSize * 0.5;
-        
-        ctx.font = `${authorFontSize}px ${fontStyle}`;
-        ctx.textAlign = "right";
-        
-        ctx.fillText(author.trim(), authorX, authorY);
-      }
+      const startY = canvas.height / 2 - (lines.length * lineHeight) / 2;
+      
+      lines.forEach((line, lineIndex) => {
+        // Si es una línea vacía, solo avanzar el espacio
+        if (line.length === 0) {
+          return;
+        }
+
+        let lineWidth = 0;
+        line.forEach((word, wordIndex) => {
+          ctx.font = getFontString(word.style);
+          lineWidth += ctx.measureText(word.text).width;
+          if (wordIndex < line.length - 1) {
+            lineWidth += ctx.measureText(" ").width;
+          }
+        });
+
+        let x = (canvas.width - lineWidth) / 2;
+        const y = startY + lineIndex * lineHeight;
+
+        line.forEach((word, wordIndex) => {
+          ctx.font = getFontString(word.style);
+          ctx.textAlign = "left";
+          ctx.fillText(word.text, x, y);
+          
+          x += ctx.measureText(word.text).width;
+          if (wordIndex < line.length - 1) {
+            x += ctx.measureText(" ").width;
+          }
+        });
+      });
     }
 
-    // --- Drawing Author (when text is NOT present) ---
-    if (author.trim() && !text.trim()) {
-        // Reset shadow for author text
-        ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-        ctx.shadowBlur = 8;
-        ctx.shadowOffsetX = 2;
-        ctx.shadowOffsetY = 2;
-
-        const authorFontSize = fontSize * 0.6;
-        const authorX = canvas.width * 0.9 - authorFontSize * 0.5;
-        const authorY = canvas.height / 2; 
-
-        ctx.font = `${authorFontSize}px ${fontStyle}`;
-        ctx.textAlign = "right";
-
-        ctx.fillText(author.trim(), authorX, authorY);
+    // Dibuja el autor si existe
+    if (author.trim()) {
+      const authorFontSize = fontSize * 0.6;
+      const extraSpacingFactor = 3.5;
+      
+      const textLines = text.trim() ? Math.ceil(ctx.measureText(text).width / (canvas.width * 0.8)) : 0;
+      const lineHeight = fontSize * 1.4;
+      const startY = canvas.height / 2 - (textLines * lineHeight) / 2;
+      const authorY = startY + textLines * lineHeight + authorFontSize * 0.8 + lineHeight * extraSpacingFactor;
+      const authorX = canvas.width * 0.9 - authorFontSize * 0.5;
+      
+      ctx.font = `${authorFontSize}px Arial`;
+      ctx.textAlign = "right";
+      
+      ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      
+      ctx.fillText(author.trim(), authorX, authorY);
     }
   };
 
@@ -508,7 +428,7 @@ export const SimpleEditor = () => {
                 className="min-h-32 resize-none transition-all focus:shadow-soft"
               />
               <p className="text-sm text-muted-foreground">
-                💡 Tip: Usa **texto** para <strong>negrita</strong> y _texto_ para <em>cursiva</em>. Presiona Enter para saltos de línea.
+                💡 Tip: Usa **texto** para <strong>negrita</strong> y *texto* para <em>cursiva</em>. Presiona Enter para saltos de línea.
               </p>
             </div>
 
