@@ -102,9 +102,7 @@ export const SimpleEditor = () => {
 
       // Dibuja el texto principal si existe
       if (text.trim()) {
-        ctx.font = `${fontSize}px Arial`;
         ctx.fillStyle = inkColor;
-        ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
         // Añade sombra visible
@@ -114,26 +112,89 @@ export const SimpleEditor = () => {
         ctx.shadowOffsetY = 2;
 
         const maxWidth = canvas.width * 0.8;
-        const words = text.split(" ");
-        let line = "";
-        const lines: string[] = [];
         const lineHeight = fontSize * 1.4;
 
-        words.forEach((word) => {
-          const testLine = line + word + " ";
-          const metrics = ctx.measureText(testLine);
-          if (metrics.width > maxWidth && line.trim()) {
-            lines.push(line);
-            line = word + " ";
+        // Función para parsear el estilo de una palabra
+        const parseWord = (word: string): { text: string; style: string } => {
+          // Negrita: **texto**
+          if (word.startsWith("**") && word.endsWith("**") && word.length > 4) {
+            return { text: word.slice(2, -2), style: "bold" };
+          }
+          // Cursiva: *texto*
+          if (word.startsWith("*") && word.endsWith("*") && word.length > 2) {
+            return { text: word.slice(1, -1), style: "italic" };
+          }
+          return { text: word, style: "normal" };
+        };
+
+        // Función para obtener el font string según el estilo
+        const getFontString = (style: string): string => {
+          if (style === "bold") return `bold ${fontSize}px Arial`;
+          if (style === "italic") return `italic ${fontSize}px Arial`;
+          return `${fontSize}px Arial`;
+        };
+
+        // Procesar palabras con estilos
+        const words = text.split(" ");
+        const styledWords = words.map(parseWord);
+
+        // Crear líneas con wrapping, considerando los estilos
+        interface StyledWord {
+          text: string;
+          style: string;
+        }
+        const lines: StyledWord[][] = [];
+        let currentLine: StyledWord[] = [];
+        let currentLineWidth = 0;
+
+        styledWords.forEach((word, index) => {
+          ctx.font = getFontString(word.style);
+          const wordWidth = ctx.measureText(word.text).width;
+          const spaceWidth = ctx.measureText(" ").width;
+          const totalWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
+
+          if (totalWidth > maxWidth && currentLine.length > 0) {
+            lines.push([...currentLine]);
+            currentLine = [word];
+            currentLineWidth = wordWidth;
           } else {
-            line = testLine;
+            currentLine.push(word);
+            currentLineWidth = totalWidth;
           }
         });
-        lines.push(line);
+        if (currentLine.length > 0) {
+          lines.push(currentLine);
+        }
 
+        // Dibujar cada línea centrada
         const startY = canvas.height / 2 - (lines.length * lineHeight) / 2;
-        lines.forEach((line, index) => {
-          ctx.fillText(line.trim(), canvas.width / 2, startY + index * lineHeight);
+        
+        lines.forEach((line, lineIndex) => {
+          // Calcular ancho total de la línea
+          let lineWidth = 0;
+          line.forEach((word, wordIndex) => {
+            ctx.font = getFontString(word.style);
+            lineWidth += ctx.measureText(word.text).width;
+            if (wordIndex < line.length - 1) {
+              lineWidth += ctx.measureText(" ").width;
+            }
+          });
+
+          // Posición inicial para centrar
+          let x = (canvas.width - lineWidth) / 2;
+          const y = startY + lineIndex * lineHeight;
+
+          // Dibujar cada palabra con su estilo
+          line.forEach((word, wordIndex) => {
+            ctx.font = getFontString(word.style);
+            ctx.textAlign = "left";
+            ctx.fillText(word.text, x, y);
+            
+            x += ctx.measureText(word.text).width;
+            if (wordIndex < line.length - 1) {
+              x += ctx.measureText(" ").width;
+            }
+          });
         });
       }
 
