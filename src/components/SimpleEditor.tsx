@@ -58,22 +58,51 @@ export const SimpleEditor = () => {
     toast.info("Imagen eliminada");
   };
 
-  const handleLoadFromUrl = () => {
+  const handleLoadFromUrl = async () => {
     if (!imageUrl.trim()) {
       toast.error("Por favor ingresa una URL válida");
       return;
     }
     
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      setImage(imageUrl);
+    // Intentar cargar la imagen directamente primero
+    const tryLoadImage = (url: string, useCors: boolean = true): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        if (useCors) {
+          img.crossOrigin = "anonymous";
+        }
+        img.onload = () => {
+          setImage(url);
+          resolve(true);
+        };
+        img.onerror = () => {
+          resolve(false);
+        };
+        img.src = url;
+      });
+    };
+
+    toast.info("Cargando imagen...");
+
+    // Estrategia 1: Intentar cargar directamente con CORS
+    let success = await tryLoadImage(imageUrl, true);
+    
+    if (!success) {
+      // Estrategia 2: Intentar sin CORS
+      success = await tryLoadImage(imageUrl, false);
+    }
+    
+    if (!success) {
+      // Estrategia 3: Usar proxy CORS para sitios bloqueados como Pinterest
+      const corsProxy = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
+      success = await tryLoadImage(corsProxy, true);
+    }
+
+    if (success) {
       toast.success("Imagen cargada desde URL");
-    };
-    img.onerror = () => {
-      toast.error("Error al cargar la imagen desde la URL");
-    };
-    img.src = imageUrl;
+    } else {
+      toast.error("Error al cargar la imagen. Intenta con una URL directa de imagen (.jpg, .png, etc.)");
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
