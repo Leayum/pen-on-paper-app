@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Upload, Link as LinkIcon, X, Download } from "lucide-react";
+import { Upload, Link as LinkIcon, X, Download, Bold, Italic, Type } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
@@ -39,6 +39,7 @@ export const SimpleEditor = () => {
   const [fontSize, setFontSize] = useState<number>(40);
   const [imageUrl, setImageUrl] = useState("");
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "9:16">("1:1");
+  const [baseTextStyle, setBaseTextStyle] = useState<"normal" | "bold" | "italic">("normal");
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,52 +153,95 @@ export const SimpleEditor = () => {
       const maxWidth = canvas.width * 0.8;
       const lineHeight = fontSize * 1.4;
 
-      // Función para parsear el estilo de una palabra
-      const parseWord = (word: string): { text: string; style: string } => {
-        if (word.startsWith("**") && word.endsWith("**") && word.length > 4) {
-          return { text: word.slice(2, -2), style: "bold" };
-        }
-        if (word.startsWith("*") && word.endsWith("*") && word.length > 2) {
-          return { text: word.slice(1, -1), style: "italic" };
-        }
-        return { text: word, style: "normal" };
+      // Función para determinar el estilo final considerando el estilo base
+      const getEffectiveStyle = (markerStyle: "normal" | "bold" | "italic"): "normal" | "bold" | "italic" => {
+        if (markerStyle === "normal") return baseTextStyle;
+        // Si el marcador indica bold/italic, hacer toggle con el estilo base
+        if (baseTextStyle === "normal") return markerStyle;
+        if (baseTextStyle === markerStyle) return "normal"; // toggle off
+        return markerStyle; // base es diferente, aplicar el marcador
       };
 
-      const getFontString = (style: string): string => {
+      const getFontString = (style: "normal" | "bold" | "italic"): string => {
         if (style === "bold") return `bold ${fontSize}px Arial`;
         if (style === "italic") return `italic ${fontSize}px Arial`;
         return `${fontSize}px Arial`;
       };
 
-      // Procesar texto respetando saltos de línea
+      // Procesar texto con marcadores ** y _ que funcionan con frases completas
       const paragraphs = text.split("\n");
       
-      interface StyledWord {
+      interface StyledSegment {
         text: string;
-        style: string;
+        style: "normal" | "bold" | "italic";
       }
-      const lines: StyledWord[][] = [];
+      const lines: StyledSegment[][] = [];
 
       paragraphs.forEach((paragraph) => {
         if (paragraph.trim() === "") {
-          // Línea vacía, añadir una línea en blanco
           lines.push([]);
           return;
         }
 
-        const words = paragraph.split(" ");
-        const styledWords = words.map(parseWord);
-        
+        // Parsear el párrafo buscando ** y _
+        const segments: StyledSegment[] = [];
+        let remaining = paragraph;
+
+        while (remaining.length > 0) {
+          // Buscar ** (negrita)
+          const boldMatch = remaining.match(/^\*\*(.+?)\*\*/);
+          if (boldMatch) {
+            segments.push({ text: boldMatch[1], style: getEffectiveStyle("bold") });
+            remaining = remaining.slice(boldMatch[0].length);
+            continue;
+          }
+
+          // Buscar _ (cursiva)
+          const italicMatch = remaining.match(/^_(.+?)_/);
+          if (italicMatch) {
+            segments.push({ text: italicMatch[1], style: getEffectiveStyle("italic") });
+            remaining = remaining.slice(italicMatch[0].length);
+            continue;
+          }
+
+          // Texto normal hasta el próximo marcador
+          const nextMarker = remaining.search(/\*\*|_/);
+          if (nextMarker === -1) {
+            segments.push({ text: remaining, style: getEffectiveStyle("normal") });
+            remaining = "";
+          } else {
+            segments.push({ text: remaining.slice(0, nextMarker), style: getEffectiveStyle("normal") });
+            remaining = remaining.slice(nextMarker);
+          }
+        }
+
+        // Dividir los segmentos en palabras para ajuste de línea
+        interface StyledWord {
+          text: string;
+          style: "normal" | "bold" | "italic";
+        }
+        const words: StyledWord[] = [];
+        segments.forEach(seg => {
+          const segWords = seg.text.split(" ");
+          segWords.forEach((w, idx) => {
+            if (w) words.push({ text: w, style: seg.style });
+            // Añadir espacio excepto en la última palabra
+            if (idx < segWords.length - 1) {
+              words.push({ text: " ", style: seg.style });
+            }
+          });
+        });
+
+        // Ajustar palabras en líneas según maxWidth
         let currentLine: StyledWord[] = [];
         let currentLineWidth = 0;
 
-        styledWords.forEach((word) => {
+        words.forEach((word) => {
           ctx.font = getFontString(word.style);
           const wordWidth = ctx.measureText(word.text).width;
-          const spaceWidth = ctx.measureText(" ").width;
-          const totalWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
+          const totalWidth = currentLineWidth + wordWidth;
 
-          if (totalWidth > maxWidth && currentLine.length > 0) {
+          if (totalWidth > maxWidth && currentLine.length > 0 && word.text !== " ") {
             lines.push([...currentLine]);
             currentLine = [word];
             currentLineWidth = wordWidth;
@@ -288,7 +332,7 @@ export const SimpleEditor = () => {
     };
 
     img.src = image;
-  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio]);
+  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio, baseTextStyle]);
 
   const handleDownload = () => {
     if (!image) {
@@ -462,8 +506,42 @@ export const SimpleEditor = () => {
                 onChange={(e) => setText(e.target.value)}
                 className="min-h-32 resize-none transition-all focus:shadow-soft"
               />
+              
+              <div className="flex items-center gap-2 pt-2">
+                <Label className="text-sm font-medium">Formato base:</Label>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={baseTextStyle === "normal" ? "default" : "outline"}
+                    onClick={() => setBaseTextStyle("normal")}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Type className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={baseTextStyle === "bold" ? "default" : "outline"}
+                    onClick={() => setBaseTextStyle("bold")}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Bold className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={baseTextStyle === "italic" ? "default" : "outline"}
+                    onClick={() => setBaseTextStyle("italic")}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Italic className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              
               <p className="text-sm text-muted-foreground">
-                💡 Tip: Usa **texto** para <strong>negrita</strong> y *texto* para <em>cursiva</em>. Presiona Enter para saltos de línea.
+                💡 Tip: Usa **texto** para <strong>negrita</strong> y _texto_ para <em>cursiva</em>. Presiona Enter para saltos de línea.
               </p>
             </div>
 
