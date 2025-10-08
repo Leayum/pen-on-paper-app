@@ -63,46 +63,43 @@ export const SimpleEditor = () => {
       toast.error("Por favor ingresa una URL válida");
       return;
     }
-    
-    // Intentar cargar la imagen directamente primero
-    const tryLoadImage = (url: string, useCors: boolean = true): Promise<boolean> => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        if (useCors) {
-          img.crossOrigin = "anonymous";
-        }
-        img.onload = () => {
-          setImage(url);
-          resolve(true);
-        };
-        img.onerror = () => {
-          resolve(false);
-        };
-        img.src = url;
+
+    const toDataURL = (blob: Blob): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
       });
-    };
 
-    toast.info("Cargando imagen...");
+    // Probar diferentes rutas (directa y proxies)
+    const candidates = [
+      imageUrl,
+      `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`,
+      `https://cors.isomorphic-git.org/${imageUrl}`,
+    ];
 
-    // Estrategia 1: Intentar cargar directamente con CORS
-    let success = await tryLoadImage(imageUrl, true);
-    
-    if (!success) {
-      // Estrategia 2: Intentar sin CORS
-      success = await tryLoadImage(imageUrl, false);
-    }
-    
-    if (!success) {
-      // Estrategia 3: Usar proxy CORS para sitios bloqueados como Pinterest
-      const corsProxy = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
-      success = await tryLoadImage(corsProxy, true);
+    toast.info("Cargando imagen desde URL...");
+
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { mode: "cors" as RequestMode });
+        if (!res.ok) continue;
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.startsWith("image/")) continue;
+        const blob = await res.blob();
+        const dataUrl = await toDataURL(blob);
+        setImage(dataUrl);
+        toast.success("Imagen cargada desde URL");
+        return;
+      } catch (_) {
+        // intentar siguiente opción
+      }
     }
 
-    if (success) {
-      toast.success("Imagen cargada desde URL");
-    } else {
-      toast.error("Error al cargar la imagen. Intenta con una URL directa de imagen (.jpg, .png, etc.)");
-    }
+    toast.error(
+      "No se pudo cargar la imagen. Prueba con un enlace directo a la imagen (.jpg, .png) o descarga el archivo."
+    );
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,11 +296,20 @@ export const SimpleEditor = () => {
       return;
     }
 
-    const link = document.createElement("a");
-    link.download = `editor-simple-${aspectRatio === "1:1" ? "cuadrado" : "tiktok"}.png`;
-    link.href = canvasRef.current?.toDataURL("image/png") || "";
-    link.click();
-    toast.success(`Imagen ${aspectRatio} descargada`);
+    try {
+      const dataUrl = canvasRef.current?.toDataURL("image/png");
+      if (!dataUrl) throw new Error("toDataURL vacío");
+      const link = document.createElement("a");
+      link.download = `editor-simple-${aspectRatio === "1:1" ? "cuadrado" : "tiktok"}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success(`Imagen ${aspectRatio} descargada`);
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        "No se pudo exportar por restricciones CORS. Intenta cargar la imagen por archivo o usando la opción URL (proxy)."
+      );
+    }
   };
 
   return (
