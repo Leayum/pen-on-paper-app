@@ -40,6 +40,9 @@ export const SimpleEditor = () => {
   const [imageUrl, setImageUrl] = useState("");
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "9:16">("1:1");
   const [baseTextStyle, setBaseTextStyle] = useState<"normal" | "bold" | "italic">("normal");
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,14 +130,14 @@ export const SimpleEditor = () => {
       // Imagen más ancha que el canvas
       drawHeight = canvas.height;
       drawWidth = img.width * (canvas.height / img.height);
-      offsetX = (canvas.width - drawWidth) / 2;
-      offsetY = 0;
+      offsetX = (canvas.width - drawWidth) / 2 + imagePosition.x;
+      offsetY = imagePosition.y;
     } else {
       // Imagen más alta que el canvas
       drawWidth = canvas.width;
       drawHeight = img.height * (canvas.width / img.width);
-      offsetX = 0;
-      offsetY = (canvas.height - drawHeight) / 2;
+      offsetX = imagePosition.x;
+      offsetY = (canvas.height - drawHeight) / 2 + imagePosition.y;
     }
     
     ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
@@ -186,29 +189,37 @@ export const SimpleEditor = () => {
         // Parsear el párrafo buscando ** y _
         const segments: StyledSegment[] = [];
         let remaining = paragraph;
+        let safetyCounter = 0;
+        const maxIterations = 1000;
 
-        while (remaining.length > 0) {
-          // Buscar ** (negrita)
-          const boldMatch = remaining.match(/^\*\*(.+?)\*\*/);
+        while (remaining.length > 0 && safetyCounter < maxIterations) {
+          safetyCounter++;
+          
+          // Buscar ** (negrita) - debe tener contenido dentro
+          const boldMatch = remaining.match(/^\*\*([^\*]+)\*\*/);
           if (boldMatch) {
             segments.push({ text: boldMatch[1], style: getEffectiveStyle("bold") });
             remaining = remaining.slice(boldMatch[0].length);
             continue;
           }
 
-          // Buscar _ (cursiva)
-          const italicMatch = remaining.match(/^_(.+?)_/);
+          // Buscar _ (cursiva) - debe tener contenido dentro
+          const italicMatch = remaining.match(/^_([^_]+)_/);
           if (italicMatch) {
             segments.push({ text: italicMatch[1], style: getEffectiveStyle("italic") });
             remaining = remaining.slice(italicMatch[0].length);
             continue;
           }
 
-          // Texto normal hasta el próximo marcador
+          // Texto normal hasta el próximo marcador o fin
           const nextMarker = remaining.search(/\*\*|_/);
           if (nextMarker === -1) {
             segments.push({ text: remaining, style: getEffectiveStyle("normal") });
             remaining = "";
+          } else if (nextMarker === 0) {
+            // Marcador inválido o sin cerrar - tomar un solo carácter
+            segments.push({ text: remaining[0], style: getEffectiveStyle("normal") });
+            remaining = remaining.slice(1);
           } else {
             segments.push({ text: remaining.slice(0, nextMarker), style: getEffectiveStyle("normal") });
             remaining = remaining.slice(nextMarker);
@@ -222,12 +233,10 @@ export const SimpleEditor = () => {
         }
         const words: StyledWord[] = [];
         segments.forEach(seg => {
-          const segWords = seg.text.split(" ");
-          segWords.forEach((w, idx) => {
-            if (w) words.push({ text: w, style: seg.style });
-            // Añadir espacio excepto en la última palabra
-            if (idx < segWords.length - 1) {
-              words.push({ text: " ", style: seg.style });
+          const segWords = seg.text.split(/(\s+)/); // Capturar también los espacios
+          segWords.forEach((w) => {
+            if (w.length > 0) {
+              words.push({ text: w, style: seg.style });
             }
           });
         });
@@ -241,7 +250,7 @@ export const SimpleEditor = () => {
           const wordWidth = ctx.measureText(word.text).width;
           const totalWidth = currentLineWidth + wordWidth;
 
-          if (totalWidth > maxWidth && currentLine.length > 0 && word.text !== " ") {
+          if (totalWidth > maxWidth && currentLine.length > 0 && !/^\s+$/.test(word.text)) {
             lines.push([...currentLine]);
             currentLine = [word];
             currentLineWidth = wordWidth;
@@ -264,26 +273,19 @@ export const SimpleEditor = () => {
         }
 
         let lineWidth = 0;
-        line.forEach((word, wordIndex) => {
+        line.forEach((word) => {
           ctx.font = getFontString(word.style);
           lineWidth += ctx.measureText(word.text).width;
-          if (wordIndex < line.length - 1) {
-            lineWidth += ctx.measureText(" ").width;
-          }
         });
 
         let x = (canvas.width - lineWidth) / 2;
         const y = startY + lineIndex * lineHeight;
 
-        line.forEach((word, wordIndex) => {
+        line.forEach((word) => {
           ctx.font = getFontString(word.style);
           ctx.textAlign = "left";
           ctx.fillText(word.text, x, y);
-          
           x += ctx.measureText(word.text).width;
-          if (wordIndex < line.length - 1) {
-            x += ctx.measureText(" ").width;
-          }
         });
       });
     }
@@ -332,7 +334,67 @@ export const SimpleEditor = () => {
     };
 
     img.src = image;
-  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio, baseTextStyle]);
+  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio, baseTextStyle, imagePosition]);
+
+  // Resetear posición al cambiar proporción
+  useEffect(() => {
+    setImagePosition({ x: 0, y: 0 });
+  }, [aspectRatio]);
+
+  // Handlers para arrastrar la imagen
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!image) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - rect.left - imagePosition.x,
+      y: e.clientY - rect.top - imagePosition.y,
+    });
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDragging || !image) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const newX = e.clientX - rect.left - dragStart.x;
+    const newY = e.clientY - rect.top - dragStart.y;
+    
+    setImagePosition({ x: newX, y: newY });
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!image || e.touches.length === 0) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    setIsDragging(true);
+    setDragStart({
+      x: e.touches[0].clientX - rect.left - imagePosition.x,
+      y: e.touches[0].clientY - rect.top - imagePosition.y,
+    });
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDragging || !image || e.touches.length === 0) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const newX = e.touches[0].clientX - rect.left - dragStart.x;
+    const newY = e.touches[0].clientY - rect.top - dragStart.y;
+    
+    setImagePosition({ x: newX, y: newY });
+  };
+
+  const handleCanvasTouchEnd = () => {
+    setIsDragging(false);
+  };
 
   const handleDownload = () => {
     if (!image) {
@@ -441,7 +503,14 @@ export const SimpleEditor = () => {
               {image ? (
                 <canvas
                   ref={canvasRef}
-                  className="w-full h-80 object-contain"
+                  className="w-full h-80 object-contain cursor-move"
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
+                  onMouseLeave={handleCanvasMouseUp}
+                  onTouchStart={handleCanvasTouchStart}
+                  onTouchMove={handleCanvasTouchMove}
+                  onTouchEnd={handleCanvasTouchEnd}
                 />
               ) : (
                 <div className="w-full h-80 flex items-center justify-center text-muted-foreground">
@@ -449,6 +518,11 @@ export const SimpleEditor = () => {
                 </div>
               )}
             </div>
+            {image && (
+              <p className="text-sm text-muted-foreground text-center mt-2">
+                💡 Arrastra la imagen para reposicionarla
+              </p>
+            )}
 
             <div className="space-y-3">
               <div className="space-y-2">
