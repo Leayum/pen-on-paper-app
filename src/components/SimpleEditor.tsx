@@ -71,6 +71,8 @@ export const SimpleEditor = () => {
       return;
     }
 
+    const rawUrl = imageUrl.trim();
+
     const toDataURL = (blob: Blob): Promise<string> =>
       new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -79,41 +81,108 @@ export const SimpleEditor = () => {
         reader.readAsDataURL(blob);
       });
 
-    toast.info("Cargando imagen desde URL...");
-
-    // Detectar si es un pin de Pinterest
-    if (imageUrl.includes("pinterest.com/pin/")) {
-      try {
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
-        const res = await fetch(proxyUrl);
-        const html = await res.text();
-        
-        // Buscar la imagen en el HTML - Pinterest usa og:image
-        const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/);
-        if (ogImageMatch && ogImageMatch[1]) {
-          const imageUrl = ogImageMatch[1];
-          // Cargar la imagen encontrada
-          const imgRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(imageUrl)}`);
-          const blob = await imgRes.blob();
-          const dataUrl = await toDataURL(blob);
-          setImage(dataUrl);
-          toast.success("Imagen cargada desde Pinterest");
-          return;
-        }
-      } catch (err) {
-        console.error("Error cargando pin de Pinterest:", err);
-        toast.error("No se pudo cargar el pin de Pinterest");
-        return;
-      }
-    }
-
-    // Probar diferentes rutas (directa y proxies)
-    const candidates = [
-      imageUrl,
-      `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`,
-      `https://cors.isomorphic-git.org/${imageUrl}`,
+    const imageProxyCandidates = (u: string) => [
+      u,
+      `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      `https://cors.isomorphic-git.org/${u}`,
+      `https://thingproxy.freeboard.io/fetch/${u}`,
     ];
 
+    const tryLoadImageUrl = async (u: string, successMsg = "Imagen cargada desde URL") => {
+      for (const url of imageProxyCandidates(u)) {
+        try {
+          const res = await fetch(url, { mode: "cors" as RequestMode });
+          if (!res.ok) continue;
+          const ct = res.headers.get("content-type") || "";
+          if (!ct.startsWith("image/")) continue;
+          const blob = await res.blob();
+          const dataUrl = await toDataURL(blob);
+          setImage(dataUrl);
+          toast.success(successMsg);
+          return true;
+        } catch (_) {
+          // intentar siguiente opción
+        }
+      }
+      return false;
+    };
+
+    toast.info("Cargando imagen desde URL...");
+
+    // Soporte para páginas de pines de Pinterest (no solo URL directa de imagen)
+    const isPinterestPin = /pinterest\.[^\/]+\/pin\//i.test(rawUrl);
+    if (isPinterestPin) {
+      // Intentar obtener el HTML y extraer la imagen (og:image, ld+json o cualquier i.pinimg.com)
+      const htmlCandidates = [
+        `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`,
+        `https://thingproxy.freeboard.io/fetch/${rawUrl}`,
+        // Jina Reader devuelve HTML legible (sin cabeceras), pero suele incluir URLs de i.pinimg.com en el contenido
+        `https://r.jina.ai/http/${rawUrl.replace(/^https?:\/\//, "")}`,
+        `https://r.jina.ai/https/${rawUrl.replace(/^https?:\/\//, "")}`,
+      ];
+
+      for (const url of htmlCandidates) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const html = await res.text();
+
+          // 1) og:image / og:image:secure_url
+          const ogMatch =
+            html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+            html.match(/<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/i);
+
+          let extractedUrl: string | null = null;
+          if (ogMatch && ogMatch[1]) {
+            extractedUrl = ogMatch[1];
+          }
+
+          // 2) Buscar en scripts ld+json un contentUrl o image
+          if (!extractedUrl) {
+            const ldjsonRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+            let m: RegExpExecArray | null;
+            while ((m = ldjsonRegex.exec(html))) {
+              try {
+                const json = JSON.parse(m[1]);
+                const arr = Array.isArray(json) ? json : [json];
+                for (const obj of arr) {
+                  const cand = (obj && (obj.contentUrl || (typeof obj.image === 'string' ? obj.image : null))) as string | undefined;
+                  if (cand) {
+                    extractedUrl = cand;
+                    break;
+                  }
+                }
+                if (extractedUrl) break;
+              } catch {}
+            }
+          }
+
+          // 3) Fallback: cualquier URL de i.pinimg.com con extensión de imagen
+          if (!extractedUrl) {
+            const pinimgMatch = html.match(/https?:\/\/i\.pinimg\.com\/[\w\/-]+\.(?:jpg|jpeg|png|webp)/i);
+            if (pinimgMatch) extractedUrl = pinimgMatch[0];
+          }
+
+          if (extractedUrl) {
+            // Mejorar resolución si es posible (reemplazar 736x por originals)
+            try {
+              extractedUrl = extractedUrl.replace(/\/(\d+)x\//, "/originals/");
+            } catch {}
+
+            const ok = await tryLoadImageUrl(extractedUrl, "Imagen cargada desde Pinterest");
+            if (ok) return;
+          }
+        } catch (_) {
+          // probar siguiente candidato
+        }
+      }
+
+      toast.error("No se pudo extraer la imagen del pin de Pinterest. Prueba con el enlace directo de la imagen.");
+      return;
+    }
+
+    // Si no es Pinterest, intentar cargar como imagen directa con proxies
+    const candidates = imageProxyCandidates(rawUrl);
     for (const url of candidates) {
       try {
         const res = await fetch(url, { mode: "cors" as RequestMode });
