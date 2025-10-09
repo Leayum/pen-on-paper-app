@@ -40,6 +40,8 @@ export const SimpleEditor = () => {
   const [imageUrl, setImageUrl] = useState("");
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "9:16">("1:1");
   const [baseTextStyle, setBaseTextStyle] = useState<"normal" | "bold" | "italic">("normal");
+  const [authorTextStyle, setAuthorTextStyle] = useState<"normal" | "bold" | "italic">("normal");
+  const [authorFontSize, setAuthorFontSize] = useState<number>(24);
   const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
   const [imageScale, setImageScale] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
@@ -340,7 +342,6 @@ export const SimpleEditor = () => {
 
     // Dibuja el autor si existe
     if (author.trim()) {
-      const authorFontSize = fontSize * 0.6;
       const extraSpacingFactor = 3.5;
       
       const textLines = text.trim() ? Math.ceil(ctx.measureText(text).width / (canvas.width * 0.8)) : 0;
@@ -349,7 +350,15 @@ export const SimpleEditor = () => {
       const authorY = startY + textLines * lineHeight + authorFontSize * 0.8 + lineHeight * extraSpacingFactor;
       const authorX = canvas.width * 0.9 - authorFontSize * 0.5;
       
-      ctx.font = `${authorFontSize}px Arial`;
+      // Aplicar estilo del autor
+      let authorFontString = `${authorFontSize}px Arial`;
+      if (authorTextStyle === "bold") {
+        authorFontString = `bold ${authorFontSize}px Arial`;
+      } else if (authorTextStyle === "italic") {
+        authorFontString = `italic ${authorFontSize}px Arial`;
+      }
+      
+      ctx.font = authorFontString;
       ctx.textAlign = "right";
       
       ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
@@ -382,7 +391,7 @@ export const SimpleEditor = () => {
     };
 
     img.src = image;
-  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio, baseTextStyle, imagePosition, imageScale]);
+  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio, baseTextStyle, authorTextStyle, authorFontSize, imagePosition, imageScale]);
 
   // Resetear posición y escala al cambiar proporción
   useEffect(() => {
@@ -729,6 +738,54 @@ export const SimpleEditor = () => {
                 onChange={(e) => setAuthor(e.target.value)}
                 className="min-h-16 resize-none transition-all focus:shadow-soft"
               />
+              
+              <div className="flex items-center gap-2 pt-2">
+                <Label className="text-sm font-medium">Formato autor:</Label>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={authorTextStyle === "normal" ? "default" : "outline"}
+                    onClick={() => setAuthorTextStyle("normal")}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Type className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={authorTextStyle === "bold" ? "default" : "outline"}
+                    onClick={() => setAuthorTextStyle("bold")}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Bold className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={authorTextStyle === "italic" ? "default" : "outline"}
+                    onClick={() => setAuthorTextStyle("italic")}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Italic className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="space-y-2 pt-2">
+                <Label htmlFor="author-font-size" className="text-sm font-medium">
+                  Tamaño fuente autor: {authorFontSize}px
+                </Label>
+                <Slider
+                  id="author-font-size"
+                  min={10}
+                  max={60}
+                  step={1}
+                  value={[authorFontSize]}
+                  onValueChange={(value) => setAuthorFontSize(value[0])}
+                  className="w-full"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
