@@ -153,18 +153,18 @@ export const SimpleEditor = () => {
     
     let drawWidth, drawHeight, offsetX, offsetY;
     
-    // Calcular dimensiones base para cubrir el canvas
+    // Calcular dimensiones base para cubrir el canvas completamente
     if (imgAspect > canvasAspect) {
-      // Imagen más ancha - ajustar por altura
+      // Imagen más ancha - ajustar por altura, solo movimiento horizontal
       drawHeight = canvas.height * imageScale;
       drawWidth = img.width * (drawHeight / img.height);
       offsetX = (canvas.width - drawWidth) / 2 + imagePosition.x;
-      offsetY = imagePosition.y;
+      offsetY = 0;
     } else {
-      // Imagen más alta - ajustar por ancho
+      // Imagen más alta - ajustar por ancho, solo movimiento vertical
       drawWidth = canvas.width * imageScale;
       drawHeight = img.height * (drawWidth / img.width);
-      offsetX = imagePosition.x;
+      offsetX = 0;
       offsetY = (canvas.height - drawHeight) / 2 + imagePosition.y;
     }
     
@@ -404,14 +404,27 @@ export const SimpleEditor = () => {
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging || !image) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!isDragging || !image || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
     if (!rect) return;
 
-    const newX = e.clientX - rect.left - dragStart.x;
-    const newY = e.clientY - rect.top - dragStart.y;
+    const canvas = canvasRef.current;
+    const img = new Image();
+    img.src = image;
     
-    setImagePosition({ x: newX, y: newY });
+    const imgAspect = img.width / img.height;
+    const canvasAspect = canvas.width / canvas.height;
+
+    // Solo permitir movimiento en el eje correspondiente
+    if (imgAspect > canvasAspect) {
+      // Imagen ancha - solo horizontal
+      const newX = e.clientX - rect.left - dragStart.x;
+      setImagePosition({ x: newX, y: 0 });
+    } else {
+      // Imagen alta - solo vertical
+      const newY = e.clientY - rect.top - dragStart.y;
+      setImagePosition({ x: 0, y: newY });
+    }
   };
 
   const handleCanvasMouseUp = () => {
@@ -431,14 +444,27 @@ export const SimpleEditor = () => {
   };
 
   const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDragging || !image || e.touches.length === 0) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!isDragging || !image || e.touches.length === 0 || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
     if (!rect) return;
 
-    const newX = e.touches[0].clientX - rect.left - dragStart.x;
-    const newY = e.touches[0].clientY - rect.top - dragStart.y;
+    const canvas = canvasRef.current;
+    const img = new Image();
+    img.src = image;
     
-    setImagePosition({ x: newX, y: newY });
+    const imgAspect = img.width / img.height;
+    const canvasAspect = canvas.width / canvas.height;
+
+    // Solo permitir movimiento en el eje correspondiente
+    if (imgAspect > canvasAspect) {
+      // Imagen ancha - solo horizontal
+      const newX = e.touches[0].clientX - rect.left - dragStart.x;
+      setImagePosition({ x: newX, y: 0 });
+    } else {
+      // Imagen alta - solo vertical
+      const newY = e.touches[0].clientY - rect.top - dragStart.y;
+      setImagePosition({ x: 0, y: newY });
+    }
   };
 
   const handleCanvasTouchEnd = () => {
