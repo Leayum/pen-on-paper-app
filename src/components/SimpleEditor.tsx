@@ -41,6 +41,7 @@ export const SimpleEditor = () => {
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "9:16">("1:1");
   const [baseTextStyle, setBaseTextStyle] = useState<"normal" | "bold" | "italic">("normal");
   const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [imageScale, setImageScale] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
@@ -76,14 +77,40 @@ export const SimpleEditor = () => {
         reader.readAsDataURL(blob);
       });
 
+    toast.info("Cargando imagen desde URL...");
+
+    // Detectar si es un pin de Pinterest
+    if (imageUrl.includes("pinterest.com/pin/")) {
+      try {
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
+        const res = await fetch(proxyUrl);
+        const html = await res.text();
+        
+        // Buscar la imagen en el HTML - Pinterest usa og:image
+        const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/);
+        if (ogImageMatch && ogImageMatch[1]) {
+          const imageUrl = ogImageMatch[1];
+          // Cargar la imagen encontrada
+          const imgRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(imageUrl)}`);
+          const blob = await imgRes.blob();
+          const dataUrl = await toDataURL(blob);
+          setImage(dataUrl);
+          toast.success("Imagen cargada desde Pinterest");
+          return;
+        }
+      } catch (err) {
+        console.error("Error cargando pin de Pinterest:", err);
+        toast.error("No se pudo cargar el pin de Pinterest");
+        return;
+      }
+    }
+
     // Probar diferentes rutas (directa y proxies)
     const candidates = [
       imageUrl,
       `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`,
       `https://cors.isomorphic-git.org/${imageUrl}`,
     ];
-
-    toast.info("Cargando imagen desde URL...");
 
     for (const url of candidates) {
       try {
@@ -120,22 +147,23 @@ export const SimpleEditor = () => {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Dibuja la imagen de fondo cubriendo el canvas (object-fit: cover)
+    // Dibuja la imagen de fondo con escala y posición (siempre llena el canvas)
     const imgAspect = img.width / img.height;
     const canvasAspect = canvas.width / canvas.height;
     
     let drawWidth, drawHeight, offsetX, offsetY;
     
+    // Calcular dimensiones base para cubrir el canvas
     if (imgAspect > canvasAspect) {
-      // Imagen más ancha que el canvas
-      drawHeight = canvas.height;
-      drawWidth = img.width * (canvas.height / img.height);
+      // Imagen más ancha - ajustar por altura
+      drawHeight = canvas.height * imageScale;
+      drawWidth = img.width * (drawHeight / img.height);
       offsetX = (canvas.width - drawWidth) / 2 + imagePosition.x;
       offsetY = imagePosition.y;
     } else {
-      // Imagen más alta que el canvas
-      drawWidth = canvas.width;
-      drawHeight = img.height * (canvas.width / img.width);
+      // Imagen más alta - ajustar por ancho
+      drawWidth = canvas.width * imageScale;
+      drawHeight = img.height * (drawWidth / img.width);
       offsetX = imagePosition.x;
       offsetY = (canvas.height - drawHeight) / 2 + imagePosition.y;
     }
@@ -156,19 +184,36 @@ export const SimpleEditor = () => {
       const maxWidth = canvas.width * 0.8;
       const lineHeight = fontSize * 1.4;
 
-      // Función para determinar el estilo final considerando el estilo base
-      const getEffectiveStyle = (markerStyle: "normal" | "bold" | "italic"): "normal" | "bold" | "italic" => {
-        if (markerStyle === "normal") return baseTextStyle;
-        // Si el marcador indica bold/italic, hacer toggle con el estilo base
-        if (baseTextStyle === "normal") return markerStyle;
-        if (baseTextStyle === markerStyle) return "normal"; // toggle off
-        return markerStyle; // base es diferente, aplicar el marcador
+      // Tipos de estilo que soportan combinaciones
+      type TextStyle = {
+        bold: boolean;
+        italic: boolean;
       };
 
-      const getFontString = (style: "normal" | "bold" | "italic"): string => {
-        if (style === "bold") return `bold ${fontSize}px Arial`;
-        if (style === "italic") return `italic ${fontSize}px Arial`;
-        return `${fontSize}px Arial`;
+      // Convertir estilo base a objeto
+      const getBaseStyle = (): TextStyle => {
+        return {
+          bold: baseTextStyle === "bold",
+          italic: baseTextStyle === "italic",
+        };
+      };
+
+      // Aplicar marcadores de estilo (toggle independiente)
+      const applyMarkerStyle = (baseStyle: TextStyle, marker: "bold" | "italic"): TextStyle => {
+        if (marker === "bold") {
+          return { ...baseStyle, bold: !baseStyle.bold };
+        } else {
+          return { ...baseStyle, italic: !baseStyle.italic };
+        }
+      };
+
+      const getFontString = (style: TextStyle): string => {
+        const parts: string[] = [];
+        if (style.bold) parts.push("bold");
+        if (style.italic) parts.push("italic");
+        parts.push(`${fontSize}px`);
+        parts.push("Arial");
+        return parts.join(" ");
       };
 
       // Procesar texto con marcadores ** y _ que funcionan con frases completas
@@ -176,7 +221,7 @@ export const SimpleEditor = () => {
       
       interface StyledSegment {
         text: string;
-        style: "normal" | "bold" | "italic";
+        style: TextStyle;
       }
       const lines: StyledSegment[][] = [];
 
@@ -189,24 +234,27 @@ export const SimpleEditor = () => {
         // Parsear el párrafo buscando ** y _
         const segments: StyledSegment[] = [];
         let remaining = paragraph;
+        let currentStyle = getBaseStyle();
         let safetyCounter = 0;
         const maxIterations = 1000;
 
         while (remaining.length > 0 && safetyCounter < maxIterations) {
           safetyCounter++;
           
-          // Buscar ** (negrita) - debe tener contenido dentro
+          // Buscar ** (toggle negrita) - debe tener contenido dentro
           const boldMatch = remaining.match(/^\*\*([^\*]+)\*\*/);
           if (boldMatch) {
-            segments.push({ text: boldMatch[1], style: getEffectiveStyle("bold") });
+            const toggledStyle = applyMarkerStyle(currentStyle, "bold");
+            segments.push({ text: boldMatch[1], style: toggledStyle });
             remaining = remaining.slice(boldMatch[0].length);
             continue;
           }
 
-          // Buscar _ (cursiva) - debe tener contenido dentro
+          // Buscar _ (toggle cursiva) - debe tener contenido dentro
           const italicMatch = remaining.match(/^_([^_]+)_/);
           if (italicMatch) {
-            segments.push({ text: italicMatch[1], style: getEffectiveStyle("italic") });
+            const toggledStyle = applyMarkerStyle(currentStyle, "italic");
+            segments.push({ text: italicMatch[1], style: toggledStyle });
             remaining = remaining.slice(italicMatch[0].length);
             continue;
           }
@@ -214,14 +262,14 @@ export const SimpleEditor = () => {
           // Texto normal hasta el próximo marcador o fin
           const nextMarker = remaining.search(/\*\*|_/);
           if (nextMarker === -1) {
-            segments.push({ text: remaining, style: getEffectiveStyle("normal") });
+            segments.push({ text: remaining, style: currentStyle });
             remaining = "";
           } else if (nextMarker === 0) {
             // Marcador inválido o sin cerrar - tomar un solo carácter
-            segments.push({ text: remaining[0], style: getEffectiveStyle("normal") });
+            segments.push({ text: remaining[0], style: currentStyle });
             remaining = remaining.slice(1);
           } else {
-            segments.push({ text: remaining.slice(0, nextMarker), style: getEffectiveStyle("normal") });
+            segments.push({ text: remaining.slice(0, nextMarker), style: currentStyle });
             remaining = remaining.slice(nextMarker);
           }
         }
@@ -229,7 +277,7 @@ export const SimpleEditor = () => {
         // Dividir los segmentos en palabras para ajuste de línea
         interface StyledWord {
           text: string;
-          style: "normal" | "bold" | "italic";
+          style: TextStyle;
         }
         const words: StyledWord[] = [];
         segments.forEach(seg => {
@@ -334,11 +382,12 @@ export const SimpleEditor = () => {
     };
 
     img.src = image;
-  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio, baseTextStyle, imagePosition]);
+  }, [image, text, author, fontStyle, inkColor, fontSize, aspectRatio, baseTextStyle, imagePosition, imageScale]);
 
-  // Resetear posición al cambiar proporción
+  // Resetear posición y escala al cambiar proporción
   useEffect(() => {
     setImagePosition({ x: 0, y: 0 });
+    setImageScale(1);
   }, [aspectRatio]);
 
   // Handlers para arrastrar la imagen
@@ -394,6 +443,16 @@ export const SimpleEditor = () => {
 
   const handleCanvasTouchEnd = () => {
     setIsDragging(false);
+  };
+
+  // Manejar scroll para zoom
+  const handleCanvasWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    if (!image) return;
+    e.preventDefault();
+    
+    const delta = -e.deltaY * 0.001;
+    const newScale = Math.max(1, Math.min(3, imageScale + delta));
+    setImageScale(newScale);
   };
 
   const handleDownload = () => {
@@ -511,6 +570,7 @@ export const SimpleEditor = () => {
                   onTouchStart={handleCanvasTouchStart}
                   onTouchMove={handleCanvasTouchMove}
                   onTouchEnd={handleCanvasTouchEnd}
+                  onWheel={handleCanvasWheel}
                 />
               ) : (
                 <div className="w-full h-80 flex items-center justify-center text-muted-foreground">
@@ -519,9 +579,22 @@ export const SimpleEditor = () => {
               )}
             </div>
             {image && (
-              <p className="text-sm text-muted-foreground text-center mt-2">
-                💡 Arrastra la imagen para reposicionarla
-              </p>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground text-center">
+                  💡 Arrastra para mover | Scroll para zoom
+                </p>
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">Zoom: {imageScale.toFixed(2)}x</Label>
+                  <Slider
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    value={[imageScale]}
+                    onValueChange={(value) => setImageScale(value[0])}
+                    className="w-full"
+                  />
+                </div>
+              </div>
             )}
 
             <div className="space-y-3">
