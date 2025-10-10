@@ -81,12 +81,18 @@ export const SimpleEditor = () => {
         reader.readAsDataURL(blob);
       });
 
-    const imageProxyCandidates = (u: string) => [
-      u,
-      `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      `https://cors.isomorphic-git.org/${u}`,
-      `https://thingproxy.freeboard.io/fetch/${u}`,
-    ];
+    const imageProxyCandidates = (u: string) => {
+      const stripped = u.replace(/^https?:\/\//, "");
+      return [
+        u,
+        `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        `https://cors.isomorphic-git.org/${u}`,
+        `https://thingproxy.freeboard.io/fetch/${u}`,
+        // CORS-friendly image CDNs
+        `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}`,
+        `https://cdn.statically.io/img/${stripped}`,
+      ];
+    };
 
     const tryLoadImageUrl = async (u: string, successMsg = "Imagen cargada desde URL") => {
       for (const url of imageProxyCandidates(u)) {
@@ -107,102 +113,132 @@ export const SimpleEditor = () => {
       return false;
     };
 
-    toast.info("Cargando imagen desde URL...");
+  toast.info("Cargando imagen desde URL...");
 
-    // Soporte para páginas de pines de Pinterest (no solo URL directa de imagen)
-    const isPinterestPin = /pinterest\.[^\/]+\/pin\//i.test(rawUrl);
-    if (isPinterestPin) {
-      // Intentar obtener el HTML y extraer la imagen (og:image, ld+json o cualquier i.pinimg.com)
-      const htmlCandidates = [
-        `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`,
-        `https://thingproxy.freeboard.io/fetch/${rawUrl}`,
-        // Jina Reader devuelve HTML legible (sin cabeceras), pero suele incluir URLs de i.pinimg.com en el contenido
-        `https://r.jina.ai/http/${rawUrl.replace(/^https?:\/\//, "")}`,
-        `https://r.jina.ai/https/${rawUrl.replace(/^https?:\/\//, "")}`,
-      ];
+  // Resolver enlaces cortos de Pinterest (pin.it) y extraer imagen de páginas de pines
+  let workingUrl = rawUrl;
 
-      for (const url of htmlCandidates) {
-        try {
-          const res = await fetch(url);
-          if (!res.ok) continue;
-          const html = await res.text();
+  const isPinItShort = /^https?:\/\/(?:www\.)?pin\.it\//i.test(workingUrl);
+  if (isPinItShort) {
+    const resolveCandidates = [
+      `https://r.jina.ai/http/${workingUrl.replace(/^https?:\/\//, "")}`,
+      `https://r.jina.ai/https/${workingUrl.replace(/^https?:\/\//, "")}`,
+    ];
 
-          // 1) og:image / og:image:secure_url
-          const ogMatch =
-            html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
-            html.match(/<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/i);
-
-          let extractedUrl: string | null = null;
-          if (ogMatch && ogMatch[1]) {
-            extractedUrl = ogMatch[1];
-          }
-
-          // 2) Buscar en scripts ld+json un contentUrl o image
-          if (!extractedUrl) {
-            const ldjsonRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-            let m: RegExpExecArray | null;
-            while ((m = ldjsonRegex.exec(html))) {
-              try {
-                const json = JSON.parse(m[1]);
-                const arr = Array.isArray(json) ? json : [json];
-                for (const obj of arr) {
-                  const cand = (obj && (obj.contentUrl || (typeof obj.image === 'string' ? obj.image : null))) as string | undefined;
-                  if (cand) {
-                    extractedUrl = cand;
-                    break;
-                  }
-                }
-                if (extractedUrl) break;
-              } catch {}
-            }
-          }
-
-          // 3) Fallback: cualquier URL de i.pinimg.com con extensión de imagen
-          if (!extractedUrl) {
-            const pinimgMatch = html.match(/https?:\/\/i\.pinimg\.com\/[\w\/-]+\.(?:jpg|jpeg|png|webp)/i);
-            if (pinimgMatch) extractedUrl = pinimgMatch[0];
-          }
-
-          if (extractedUrl) {
-            // Mejorar resolución si es posible (reemplazar 736x por originals)
-            try {
-              extractedUrl = extractedUrl.replace(/\/(\d+)x\//, "/originals/");
-            } catch {}
-
-            const ok = await tryLoadImageUrl(extractedUrl, "Imagen cargada desde Pinterest");
-            if (ok) return;
-          }
-        } catch (_) {
-          // probar siguiente candidato
-        }
-      }
-
-      toast.error("No se pudo extraer la imagen del pin de Pinterest. Prueba con el enlace directo de la imagen.");
-      return;
-    }
-
-    // Si no es Pinterest, intentar cargar como imagen directa con proxies
-    const candidates = imageProxyCandidates(rawUrl);
-    for (const url of candidates) {
+    for (const url of resolveCandidates) {
       try {
-        const res = await fetch(url, { mode: "cors" as RequestMode });
+        const res = await fetch(url);
         if (!res.ok) continue;
-        const ct = res.headers.get("content-type") || "";
-        if (!ct.startsWith("image/")) continue;
-        const blob = await res.blob();
-        const dataUrl = await toDataURL(blob);
-        setImage(dataUrl);
-        toast.success("Imagen cargada desde URL");
-        return;
-      } catch (_) {
-        // intentar siguiente opción
-      }
+        const html = await res.text();
+
+        // Intentar imagen directa primero
+        const pinimgMatch = html.match(/https?:\/\/i\.pinimg\.com\/[\w\/-]+\.(?:jpg|jpeg|png|webp)/i);
+        if (pinimgMatch) {
+          const ok = await tryLoadImageUrl(pinimgMatch[0], "Imagen cargada desde Pinterest");
+          if (ok) return;
+        }
+
+        // Resolver a URL de pin de Pinterest
+        const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
+        const ogUrlMatch = html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i);
+        const pinLinkMatch = html.match(/https?:\/\/(?:\w+\.)?pinterest\.[^"'\s]+\/pin\/\d+/i);
+
+        const resolved = (canonicalMatch && canonicalMatch[1]) || (ogUrlMatch && ogUrlMatch[1]) || (pinLinkMatch && pinLinkMatch[0]) || null;
+        if (resolved) {
+          workingUrl = resolved;
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  // Soporte para páginas de pines de Pinterest (no solo URL directa de imagen)
+  const isPinterestPin = /pinterest\.[^\/]+\/pin\//i.test(workingUrl);
+  if (isPinterestPin) {
+    // Intentar obtener el HTML y extraer la imagen (og:image, ld+json o cualquier i.pinimg.com)
+    const htmlCandidates = [
+      `https://r.jina.ai/http/${workingUrl.replace(/^https?:\/\//, "")}`,
+      `https://r.jina.ai/https/${workingUrl.replace(/^https?:\/\//, "")}`,
+      `https://corsproxy.io/?${encodeURIComponent(workingUrl)}`,
+      `https://thingproxy.freeboard.io/fetch/${workingUrl}`,
+    ];
+
+    for (const url of htmlCandidates) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const html = await res.text();
+
+        // 1) og:image / og:image:secure_url
+        const ogMatch =
+          html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+          html.match(/<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/i);
+
+        let extractedUrl: string | null = null;
+        if (ogMatch && ogMatch[1]) {
+          extractedUrl = ogMatch[1];
+        }
+
+        // 2) Buscar en scripts ld+json un contentUrl o image
+        if (!extractedUrl) {
+          const ldjsonRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+          let m: RegExpExecArray | null;
+          while ((m = ldjsonRegex.exec(html))) {
+            try {
+              const json = JSON.parse(m[1]);
+              const arr = Array.isArray(json) ? json : [json];
+              for (const obj of arr) {
+                const cand = (obj && (obj.contentUrl || (typeof obj.image === 'string' ? obj.image : null))) as string | undefined;
+                if (cand) {
+                  extractedUrl = cand;
+                  break;
+                }
+              }
+              if (extractedUrl) break;
+            } catch {}
+          }
+        }
+
+        // 3) Fallback: cualquier URL de i.pinimg.com con extensión de imagen
+        if (!extractedUrl) {
+          const pinimgMatch = html.match(/https?:\/\/i\.pinimg\.com\/[\w\/-]+\.(?:jpg|jpeg|png|webp)/i);
+          if (pinimgMatch) extractedUrl = pinimgMatch[0];
+        }
+
+        if (extractedUrl) {
+          try {
+            extractedUrl = extractedUrl.replace(/\/(\d+)x\//, "/originals/");
+          } catch {}
+          const ok = await tryLoadImageUrl(extractedUrl, "Imagen cargada desde Pinterest");
+          if (ok) return;
+        }
+      } catch {}
     }
 
-    toast.error(
-      "No se pudo cargar la imagen. Prueba con un enlace directo a la imagen (.jpg, .png) o descarga el archivo."
-    );
-  };
+    toast.error("No se pudo extraer la imagen del pin de Pinterest. Prueba con el enlace directo de la imagen.");
+    return;
+  }
+
+  // Si no es Pinterest, intentar cargar como imagen directa con proxies
+  const candidates = imageProxyCandidates(workingUrl);
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { mode: "cors" as RequestMode });
+      if (!res.ok) continue;
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.startsWith("image/")) continue;
+      const blob = await res.blob();
+      const dataUrl = await toDataURL(blob);
+      setImage(dataUrl);
+      toast.success("Imagen cargada desde URL");
+      return;
+    } catch (_) {}
+  }
+
+  toast.error(
+    "No se pudo cargar la imagen. Prueba con un enlace directo a la imagen (.jpg, .png) o descarga el archivo."
+  );
+};
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
